@@ -20,8 +20,8 @@ it would go in from the top and jam halfway down.
 
 Usage:  python3 cad/bag_and_insert.py            (writes cad/stl/*.stl)
 """
-import math
 import os
+import sys
 import time
 
 import cadquery as cq
@@ -29,36 +29,12 @@ import cadquery as cq
 HERE = os.path.dirname(os.path.abspath(__file__))
 STL = os.path.join(HERE, "stl")
 
-# ─── Bag dimensions ───────────────────────────────────────────────────────────
-# ⛔ THE BODY ENDS AT 190, NOT AT 245 (the rim). The last 55 mm are the NECK,
-# and the neck is not modelled here: it is the one part of the bag that has to
-# DEFORM. On a real bag, closing the zip pinches the top shut — the mouth goes
-# from an oval to a line. Model it rigid, as the first three attempts did, and
-# any closure necessarily becomes a hatch that swings, which is exactly what
-# does not look like a bag. The neck is generated in Blender as a surface with
-# two states, interpolated between them.
-BAG_W_BOTTOM, BAG_D_BOTTOM = 240.0, 95.0
-BAG_W_TOP, BAG_D_TOP = 276.0, 112.0     # section at the end of the rigid body
-BAG_H = 190.0                            # end of the rigid body
-BAG_MOUTH_Z = 245.0                      # the actual rim, top of the neck
-LEATHER = 3.5            # thickness of the structured leather
-CORNER_R = 20.0          # vertical edge radius
-
-# ─── Insert dimensions ────────────────────────────────────────────────────────
-INS_W, INS_D, INS_R = 225.0, 78.0, 16.0
-INS_BASE_H = 8.0         # power plate: LiPo + Qi coil
-INS_FSR_H = 1.6          # sensing floor
-INS_WALL_H = 150.0
-INS_COLLAR_H = 20.0
-INS_WALL_T = 2.2
-INS_COLLAR_T = 4.0
-
-Z_BASE = 0.0
-Z_FSR = Z_BASE + INS_BASE_H
-Z_WALLS = Z_FSR + INS_FSR_H
-Z_COLLAR = Z_WALLS + INS_WALL_H
-INS_TOTAL_H = Z_COLLAR + INS_COLLAR_H
-
+# ⭐ Every shared dimension comes from one file. A wildcard import is normally
+# a smell; here it is deliberate — `dimensions.py` is nothing but named numbers
+# with no imports of its own, and spelling out twenty-five names would only
+# invite someone to add a twenty-sixth in the wrong place.
+sys.path.insert(0, os.path.dirname(HERE))
+from dimensions import *          # noqa: E402,F401,F403
 
 def rrect(w, d, r, h, z=0.0):
     """Prism on a rectangular base with filleted vertical edges."""
@@ -98,7 +74,7 @@ def bag_handles():
     ARC_R, TUBE_R = 62.0, 4.5
     # ⚠️ The handles attach to the BODY, not to the rim: the neck pinches shut,
     # and a handle stitched to the rim would hang in mid-air with the bag closed.
-    Z_ATTACH = 176.0
+    Z_ATTACH = HANDLE_Z
     parts = []
     for y in (-BAG_D_TOP / 2 + 1.5, BAG_D_TOP / 2 - 1.5):
         torus = cq.Solid.makeTorus(ARC_R, TUBE_R, cq.Vector(0, y, Z_ATTACH),
@@ -198,7 +174,7 @@ def fsr_matrix():
     need a single manifold solid, and the boolean union of 96 boxes in OCC costs
     more than the rest of the model put together.
     """
-    nx, ny = 16, 6
+    nx, ny = FSR_COLS, FSR_ROWS
     pitch_x = (INS_W - 18) / nx
     pitch_y = (INS_D - 14) / ny
     side_x, side_y = pitch_x - 2.4, pitch_y - 2.4
@@ -229,23 +205,13 @@ def insert_walls():
 def insert_dividers():
     """Two dividers — also the quadrants the app uses to name positions."""
     d = []
-    for x in (-INS_W / 6, INS_W / 6):
+    for x in (-DIVIDER_X, DIVIDER_X):
         d.append(cq.Workplane("XY")
-                 .box(1.6, INS_D - 2 * INS_WALL_T - 1, INS_WALL_H * 0.62,
+                 .box(DIVIDER_T, INS_D - 2 * INS_WALL_T - 1, INS_WALL_H * 0.62,
                       centered=(True, True, False))
                  .edges("|X").fillet(0.6)
                  .translate((x, 0, Z_WALLS)))
     return d[0].union(d[1])
-
-
-# Front band of the collar: this is the board's seat. Dimensions derived FROM
-# the board (196 x 20 mm envelope, outline in hardware/generate_pcb.py), not
-# picked by eye — it is the constraint that forced the PCB redesign.
-BAND_Y = -27.0           # centre of the band along the depth
-BAND_D = 24.0
-SEAT_Y = -26.5           # centre of the seat = centre of the board
-SEAT_D = 21.0
-SEAT_DEPTH_Z = 4.2       # how far the board is recessed below the top edge
 
 
 def insert_collar():
@@ -281,10 +247,10 @@ def insert_collar():
     def hole(x, r):
         return (cq.Workplane("XY").center(x, SEAT_Y - 4.0).circle(r)
                 .extrude(INS_COLLAR_H + 2).translate((0, 0, Z_COLLAR - 1)))
-    c = c.cut(hole(-20.0, 2.6))                  # IR lens
-    for x in (-52.0, -36.0, -4.0, 12.0):
+    c = c.cut(hole(CAMERA_X, 2.6))               # IR lens
+    for x in LED_X:
         c = c.cut(hole(x, 1.3))                  # IR illuminators
-    c = c.cut(hole(48.0, 1.8))                   # ToF window
+    c = c.cut(hole(TOF_X, 1.8))                  # ToF window
     return c
 
 
@@ -349,9 +315,6 @@ def fsr_cable():
 # That needs a surface that changes shape, so neck and teeth are generated in
 # Blender (render/scenes.py, `neck_zip`) as a mesh with two interpolable states.
 # What stays here is the slider, the only genuinely rigid part of a zip.
-Z_MOUTH = BAG_MOUTH_Z
-
-
 def zip_slider():
     """Slider with a hanging pull. Modelled at x = 0: the travel is animated.
 
@@ -363,14 +326,14 @@ def zip_slider():
     """
     body = (cq.Workplane("XY").box(13.0, 8.0, 5.6, centered=(True, True, False))
             .edges("|Z").fillet(2.4).edges(">Z").fillet(1.2)
-            .translate((0, 0, Z_MOUTH - 4.6)))
+            .translate((0, 0, BAG_MOUTH_Z - 4.6)))
     # eyelet on the front face
     eyelet = (cq.Workplane("XY").box(3.2, 3.0, 3.2, centered=(True, True, False))
-              .translate((0, -5.0, Z_MOUTH - 3.2)))
+              .translate((0, -5.0, BAG_MOUTH_Z - 3.2)))
     pull = (cq.Workplane("XY")
             .box(7.0, 1.4, 15.0, centered=(True, True, False))
             .edges("|Y").fillet(3.0)
-            .translate((0, -6.2, Z_MOUTH - 17.0)))
+            .translate((0, -6.2, BAG_MOUTH_Z - 17.0)))
     return body.union(eyelet).union(pull)
 
 
@@ -383,17 +346,17 @@ def zip_slider():
 def optics_body():
     """IR camera module + four illuminators + ToF, hanging under the band."""
     y = SEAT_Y - 4.0
-    z = Z_COLLAR + INS_COLLAR_H - SEAT_DEPTH_Z - 9.0   # below the board plane
+    z = Z_COLLAR + INS_COLLAR_H - SEAT_DEPTH_Z - OPTICS_DROP
     parts = [
         # camera can
         cq.Workplane("XY").box(19.0, 13.0, 9.0, centered=(True, True, False))
-        .edges("|Z").fillet(2.0).translate((-20.0, y, z)),
+        .edges("|Z").fillet(2.0).translate((CAMERA_X, y, z)),
         # illuminator bar
         cq.Workplane("XY").box(74.0, 8.0, 5.0, centered=(True, True, False))
-        .edges("|Z").fillet(1.5).translate((-20.0, y, z + 1.0)),
+        .edges("|Z").fillet(1.5).translate((CAMERA_X, y, z + 1.0)),
         # ToF can
         cq.Workplane("XY").box(9.0, 9.0, 7.0, centered=(True, True, False))
-        .edges("|Z").fillet(1.5).translate((48.0, y, z + 1.0)),
+        .edges("|Z").fillet(1.5).translate((TOF_X, y, z + 1.0)),
     ]
     c = parts[0]
     for q in parts[1:]:
@@ -404,13 +367,13 @@ def optics_body():
 def optics_lenses():
     """The lenses, kept separate: on screen they want black glass, not microfibre."""
     y = SEAT_Y - 4.0
-    z = Z_COLLAR + INS_COLLAR_H - SEAT_DEPTH_Z - 9.0
-    lenses = [cq.Workplane("XY").center(-20.0, y).circle(3.6).extrude(-1.6)
+    z = Z_COLLAR + INS_COLLAR_H - SEAT_DEPTH_Z - OPTICS_DROP
+    lenses = [cq.Workplane("XY").center(CAMERA_X, y).circle(3.6).extrude(-1.6)
               .translate((0, 0, z)).edges("<Z").fillet(0.6)]
-    for x in (-52.0, -36.0, -4.0, 12.0):
+    for x in LED_X:
         lenses.append(cq.Workplane("XY").center(x, y).circle(1.7).extrude(-1.2)
                       .translate((0, 0, z + 1.0)))
-    lenses.append(cq.Workplane("XY").center(48.0, y).circle(2.1).extrude(-1.4)
+    lenses.append(cq.Workplane("XY").center(TOF_X, y).circle(2.1).extrude(-1.4)
                   .translate((0, 0, z + 1.0)))
     c = lenses[0]
     for q in lenses[1:]:

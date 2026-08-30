@@ -29,6 +29,10 @@ This is a **design study**, not a product and not a manufacturable design.
   [The data model](#the-data-model), not implemented — and the hardest part
   of it (classifying an object from three IR frames on an MCU NPU) is the
   constraint that decides whether any of this stands up.
+- **No app exists either.** The phone side and the BLE interface are specified
+  in [docs/app-and-ble.md](docs/app-and-ble.md) — service, characteristics,
+  enrollment flow, and why the *insert* owns the identity rather than the bag —
+  but none of it is written.
 
 What **is** real: the outline, the footprints (stock KiCad libraries, so the 3D
 models in the renders are the actual parts), the mechanical dimensions, the fits
@@ -102,10 +106,20 @@ cad/bag_and_insert.py     ──> 15 STL (bag + insert) ────────
 ```
 
 ```bash
+python3 tools/check.py             # the constraints, in ~0.1 s
 ./tools/pipeline.sh 1920           # circuit -> geometry -> stills   (~45 s)
 ./tools/render_animation.sh 1600   # 696 animation frames            (~26 min)
 python3 render/build_video.py      # captions, fades, ffmpeg encode  (~3 min)
 ```
+
+⭐ **`tools/check.py` asserts what the renders discovered.** Every constraint in
+it was found the expensive way — modelling something, rendering it, and seeing
+it was wrong. A board 51 mm deep in a 4 mm collar wall; an FSR tail 40 mm long
+against a 150 mm drop; an object landing on top of a divider. None of those
+raise an error anywhere: they produce a picture that looks fine until you look
+closely. Written down as assertions they cannot silently come back — and the
+first time it ran it caught three more, all invisible in the renders because
+something else happened to be in front.
 
 ⭐ **It is a chain, not three separate things.** The PCB does not end up in a
 PDF: it is exported to GLB and becomes an object in the *same Blender scene* as
@@ -260,13 +274,21 @@ As a side effect it also softens the identical-objects case, because two
 lipsticks enrolled separately still have slightly different embeddings.
 
 **None of this is implemented here.** This repo is geometry, layout and renders;
-the firmware side is described, not written.
+the firmware side is described, not written. The other missing half — the phone
+app, and the BLE contract between the two — is specified in
+[docs/app-and-ble.md](docs/app-and-ble.md), including the decision that settles
+its whole data model: **the insert owns the identity, not the bag.** The insert
+is removable by design, it has no way to know which bag it is sitting in, and it
+should not pretend to. Three bags means three inserts, each its own peripheral
+with its own inventory.
 
 ---
 
 ## Repo layout
 
 ```
+dimensions.py                every shared dimension, in one file
+tools/check.py               asserts the constraints the renders discovered
 hardware/generate_pcb.py     generates the KiCad board (s-expressions)
 hardware/fill_zones.py       zone fill (needs KiCad's own Python)
 cad/bag_and_insert.py        bag + insert in CadQuery -> STL
@@ -276,6 +298,7 @@ render/build_video.py        assembly, captions, fades, ffmpeg
 tools/pipeline.sh            the full chain (stills)
 tools/render_animation.sh    the film frames
 tools/render_pcb.sh          board renders only
+docs/app-and-ble.md          the companion app and the BLE contract (spec only)
 ```
 
 Generated artefacts that are **not** committed (all regenerable):
@@ -289,9 +312,9 @@ committed so the repo is useful without running anything.
 - **CadQuery** and **Pillow** on system python3
 - **ffmpeg**
 
-Paths to the KiCad footprint library and to the fonts are macOS paths at the top
-of `hardware/generate_pcb.py` and `render/build_video.py`; change those two
-constants for another OS.
+The KiCad footprint library and the caption fonts are looked up across the usual
+macOS / Linux / Windows locations, and can be overridden with
+`KICAD_FOOTPRINT_DIR`, `SMARTBAG_FONT_BOLD` and `SMARTBAG_FONT_REGULAR`.
 
 ## Two Blender 5 traps that cost real time
 

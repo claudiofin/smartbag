@@ -26,6 +26,10 @@ import mathutils
 # ⚠️ Derived from __file__, never hardcoded: Blender is launched with an
 # absolute path to this script, so the repo can live anywhere.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# ⭐ Shared dimensions, single source. See the header of dimensions.py for why
+# the wildcard is deliberate here.
+from dimensions import *          # noqa: E402,F401,F403
 STL = os.path.join(ROOT, "cad", "stl")
 OUT = os.path.join(ROOT, "render", "views")
 
@@ -35,18 +39,10 @@ OUT = os.path.join(ROOT, "render", "views")
 # working. Import in metres and think in metres.
 MM = 0.001
 
-# Dimensions shared with cad/bag_and_insert.py. ⚠️ If they change there they have
-# to change here: there is no single dimensions file, and that is the project's
-# known debt.
-LEATHER = 3.5
-INS_W, INS_D = 225.0, 78.0
+# Scene-space quantities, all derived from dimensions.py. Nothing is restated.
 Z_INSERT = LEATHER           # the insert rests on the bag's inner floor
-Z_FSR_TOP = Z_INSERT + 8.0 + 1.6
-INS_COLLAR_H = 20.0
-Z_COLLAR = 9.6 + 150.0       # base + floor + walls, from the CAD model
-SEAT_Y = -26.5               # centre of the board seat inside the band
-Z_BOARD = Z_INSERT + Z_COLLAR + INS_COLLAR_H - 4.2   # the seat plane
-INS_TOTAL_H = Z_COLLAR + INS_COLLAR_H
+Z_FSR_TOP = Z_INSERT + INS_BASE_H + INS_FSR_H
+Z_BOARD = board_seat_z()     # five CAD numbers decide this one
 
 
 def parse_args():
@@ -202,10 +198,12 @@ def load_board(position, rotation=(0, 0, 0)):
 # oval. The two rows of teeth do not rotate — they SEPARATE. Here the neck is a
 # surface generated in two states (mouth open / mouth pinched) on identical
 # topology, interpolated by a shape key.
-NECK_Z0, NECK_Z1 = 190.0, 245.0          # start and end of the neck, in mm
-NECK_A = (138.0, 143.2)                   # half-width at z0 and z1
-NECK_B = (56.0, 58.5)                     # half-depth at z0 and z1
-NECK_R = (22.0, 22.6)                     # corner radius
+NECK_Z0, NECK_Z1 = BAG_H, BAG_MOUTH_Z     # start and end of the neck, in mm
+_A0, _B0, _R0 = neck_section_at(NECK_Z0)
+_A1, _B1, _R1 = neck_section_at(NECK_Z1)
+NECK_A = (_A0, _A1)                       # half-width at z0 and z1
+NECK_B = (_B0, _B1)                       # half-depth at z0 and z1
+NECK_R = (_R0, _R1)                       # corner radius
 MOUTH_CLOSED = 5.5                        # half-depth with the mouth pinched
 TOOTH_PITCH = 3.4
 
@@ -359,17 +357,25 @@ def neck_zip(mat_, rings=18):
 # and that is not an aesthetic choice: the insert is 78 mm deep and a 105 mm
 # wallet lying flat does not fit. Handbags get packed vertically, which is also
 # why the radar looks down from above rather than across from the side.
+# ⛔ THIS LAYOUT IS CHECKED, NOT EYEBALLED. The first one had three objects
+# straddling a divider, a wallet 95 mm wide poking through a wall of a 72 mm
+# compartment, and two pairs quietly interpenetrating — none of it visible,
+# because in every framing something else was in front. `tools/check.py` now
+# asserts that each item fits its compartment, clears both dividers and touches
+# nothing else; sizes were reduced to what actually fits (a 95 mm wallet does
+# not go into a 72 mm compartment, however much you would like it to).
+#
+# Compartments, from the dividers at x = ±37.5:
+#   left   −110.3 .. −38.3      middle  −36.7 .. 36.7      right  38.3 .. 110.3
 CONTENTS = [
-    ("wallet", -72, 2, 95, 20, 105, "leather_burgundy", "box"),
-    ("phone", 2, 24, 72, 8, 148, "dark_glass", "box"),
-    ("pouch", 62, 20, 78, 28, 62, "leather", "box"),
-    # ⛔ MOVED FROM x = 44 TO x = 60. At 44 the lipstick landed straddling the
-    # divider (which sits at x = 37.5 and is 1.6 mm thick): in the film the
-    # object fell INSIDE another part. At 60 the compartment is clear — checked
-    # against the divider, the pouch (x 23..101, y 6..34) and the keys
-    # (x 71..105).
-    ("lipstick", 60, -20, 18, 18, 76, "gold", "cyl"),
-    ("keys", 88, 4, 34, 30, 6, "steel", "keys"),
+    ("wallet", -74, 0, 70, 20, 100, "leather_burgundy", "box"),
+    ("phone", 0, 22, 70, 8, 148, "dark_glass", "box"),
+    ("keys", -4, -16, 34, 30, 6, "steel", "keys"),
+    ("pouch", 74, 16, 66, 28, 62, "leather", "box"),
+    # The object the sequence film drops in. `render/animation.py` reads its
+    # position from here rather than restating it — the previous copy is how it
+    # ended up landing on top of a divider.
+    ("lipstick", 74, -18, 18, 18, 76, "gold", "cyl"),
 ]
 
 
@@ -423,7 +429,7 @@ def footprints():
 
 
 def light_taxels(fsr_object, mat_):
-    """Split the 96 taxels apart and light the ones under an object.
+    """Split the taxels apart and light the ones under an object.
 
     ⭐ This is the visual heart of the scene: the FSR matrix is not an abstract
     datum, it is the imprint the contents leave on the floor. The test is

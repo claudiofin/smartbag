@@ -19,8 +19,33 @@ import re
 import uuid as _uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FP_LIB = "/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints"
 OUT = os.path.join(HERE, "smartbag_core.kicad_pcb")
+
+
+def _footprint_library():
+    """Locate KiCad's stock footprint library.
+
+    ⚠️ This used to be one hardcoded macOS path, which made the repo
+    unrunnable anywhere else — a poor thing to publish. `KICAD_FOOTPRINT_DIR`
+    wins if set; otherwise the usual install locations are tried in order.
+    """
+    env = os.environ.get("KICAD_FOOTPRINT_DIR")
+    candidates = [env] if env else []
+    candidates += [
+        "/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints",  # macOS
+        "/usr/share/kicad/footprints",                                      # Linux
+        "/usr/local/share/kicad/footprints",
+        r"C:\Program Files\KiCad\9.0\share\kicad\footprints",          # Windows
+    ]
+    for c in candidates:
+        if c and os.path.isdir(c):
+            return c
+    raise SystemExit(
+        "KiCad footprint library not found. Set KICAD_FOOTPRINT_DIR to the "
+        "directory containing the .pretty folders.")
+
+
+FP_LIB = _footprint_library()
 
 # Board centre on an A3 sheet. The board is 196 mm wide: on A4 the outline would
 # run off the paper and pcbnew flags that the moment you open the file.

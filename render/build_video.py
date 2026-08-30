@@ -29,9 +29,31 @@ ANIM = os.path.join(HERE, "anim")
 MEDIA = os.path.join(os.path.dirname(HERE), "media")
 FPS = 24
 
-# ⚠️ macOS system fonts. On another OS, point these at any bold/regular pair.
-FONT_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-FONT_REGULAR = "/System/Library/Fonts/Supplemental/Arial.ttf"
+def _font(candidates, env):
+    """First font that exists, or a Pillow fallback.
+
+    ⚠️ These used to be two hardcoded macOS paths and the script simply crashed
+    anywhere else. `SMARTBAG_FONT_BOLD` / `SMARTBAG_FONT_REGULAR` override; the
+    last resort is Pillow's built-in bitmap font, which is ugly but keeps the
+    pipeline runnable rather than dead.
+    """
+    override = os.environ.get(env)
+    for c in ([override] if override else []) + candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
+FONT_BOLD = _font([
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+], "SMARTBAG_FONT_BOLD")
+FONT_REGULAR = _font([
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+], "SMARTBAG_FONT_REGULAR")
 
 # ⭐ TWO FILMS, ONE CHAIN OF FRAMES. `scanning` appears in both: rendered once,
 # assembled twice. Each film's closing shot is its own first shot read backwards
@@ -77,9 +99,14 @@ FILMS = {
             # in which the bag was already wide open.
             (74, 110, "until a moment ago: microamps",
              "with the bag shut the system sleeps, no sensor powered"),
-            (140, 190, "2 · an object goes in",
+            (138, 172, "2 · an object goes in",
              "the ToF sees it cross the mouth and wakes the camera"),
-            (214, 254, "3 · the IR camera fires",
+            # ⚠️ TIMED ONTO THE EVENT, not next to it. The flash fires at global
+            # frames 190-211 (object_drop 70-91); this caption used to start at
+            # 214, three frames after it ended — you read "the IR camera fires"
+            # and watched nothing happen. A caption naming an event has to be on
+            # screen while the event is.
+            (190, 246, "3 · the IR camera fires",
              "three frames as the object passes · invisible illuminators"),
             (284, 330, "4 · the radar maps the volume",
              "60 GHz through fabric: where the object landed"),
@@ -96,6 +123,10 @@ FADE = 8           # frames of fade in/out on each caption
 
 def load_fonts(width):
     k = width / 1600.0
+    if not FONT_BOLD or not FONT_REGULAR:
+        print("WARNING: no TrueType font found, captions will look poor. "
+              "Set SMARTBAG_FONT_BOLD / SMARTBAG_FONT_REGULAR.")
+        return ImageFont.load_default(), ImageFont.load_default(), k
     return (ImageFont.truetype(FONT_BOLD, int(42 * k)),
             ImageFont.truetype(FONT_REGULAR, int(21 * k)), k)
 

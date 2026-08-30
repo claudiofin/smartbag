@@ -478,10 +478,10 @@ def object_drop(m, n):
     descending on its own is a product-animation convention: understood in the
     first frame, with nothing to get wrong.
 
-    ⛔ IT LANDS AT x = 60, NOT 44. At 44 it straddled the divider: in the
-    previous film the object fell inside another part. The position is the one
-    declared in `sc.CONTENTS`, checked against divider, pouch and keys — a
-    single place for that number.
+    ⛔ THE LANDING POSITION IS READ FROM `sc.CONTENTS`, never restated. An
+    earlier version carried its own copy and drifted: the object fell on top of
+    the divider, i.e. inside another part. `tools/check.py` asserts the two
+    agree, but reading it makes the assertion impossible to fail.
     """
     cuttable = _load_section_set(m)
     fsr = sc.load_stl("fsr_matrix", m["taxel_off"], sc.Z_INSERT)
@@ -494,9 +494,11 @@ def object_drop(m, n):
     sc.section_cut(cuttable, (0.22, -0.22, 0.12), (0.44, 0.44, 0.50))
 
     # ── the descending object ────────────────────────────────────────────────
-    OBJ_X, OBJ_Y, OBJ_H = 60.0, -20.0, 76.0
+    _, OBJ_X, OBJ_Y, OBJ_W, _, OBJ_H, _, _ = [
+        c for c in sc.CONTENTS if c[0] == "lipstick"][0]
     z_rest = sc.Z_FSR_TOP + OBJ_H / 2 + 0.4
-    bpy.ops.mesh.primitive_cylinder_add(radius=9 * sc.MM, depth=OBJ_H * sc.MM,
+    bpy.ops.mesh.primitive_cylinder_add(radius=OBJ_W / 2 * sc.MM,
+                                        depth=OBJ_H * sc.MM,
                                         vertices=48)
     obj = bpy.context.object
     obj.name = "dropped_object"
