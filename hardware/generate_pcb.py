@@ -404,6 +404,8 @@ def build():
         "rigid FR4 islands 0.6 mm on 2L polyimide flex",
         "8 mm flex tails: min bend radius 12 mm (10x thickness)",
         "J4: 16 cols + 6 rows = 22 lines on a 24-way FFC",
+        "A1/A2 islands: 0.25 mm dielectric under the patches, NOT 0.6",
+        "  full-wave sim: 0.25 mm -> -27 dB at 59.9 GHz; 0.6 mm -> -2.5 dB",
     ]):
         r.append(text(s_, -98.0, 16.0 + i * 2.4, "Cmts.User", 1.1, 0.18))
 

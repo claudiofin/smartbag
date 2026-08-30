@@ -29,7 +29,8 @@ been built.
 | firmware | the **wake-up chain and the ledger exist and are tested** (28 assertions, `-Werror`). No drivers, no RTOS, no BLE stack. |
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). Trained on synthetic renders, so read it as a test of the method, not of the product. |
 | app | **specified, not written** — [docs/app-and-ble.md](docs/app-and-ble.md). |
-| RF, thermal, power | no simulation of the patch antennas, no thermal analysis, no measured power budget. |
+| RF | the 60 GHz element is **simulated full-wave** (openEMS FDTD) and the result **changed the design** — see [RF](#rf). |
+| thermal, power | no thermal analysis, no measured power budget. |
 
 Run everything that can be checked:
 
@@ -212,6 +213,48 @@ deleting something rather than adding it:
 ⛔ **The board is not routed.** Fanning out a 0.4 mm-pitch QFN-48, laying a
 22-line bus and two 60 GHz microstrip feeds is a real job, and faking it with
 decorative polylines is exactly the mistake that was just removed.
+
+## RF
+
+[`rf/patch_sim.py`](rf/patch_sim.py) solves Maxwell's equations on the patch
+element with openEMS — ground plane, dielectric, patch, probe feed — and it
+**falsified the antenna as first drawn**.
+
+The setup is validated first, because a negative result is only worth stating if
+the same solver reproduces a case theory says should work: a patch sized by the
+transmission-line model (1.31 mm on 0.127 mm) comes back at **59.0 GHz, −9.3 dB**
+— within 1.7% of target.
+
+| substrate | patch | f_res | S11 | −10 dB BW | |
+|---|---|---|---|---|---|
+| 0.600 mm | 1.20 mm | 50.8 GHz | **−2.5 dB** | 0 | the rigid stack, as first drawn |
+| 0.250 mm | 1.20 mm | **59.9 GHz** | **−27.2 dB** | **3.5 GHz** | the antenna islands, as now specified |
+
+⛔ **On the 0.6 mm rigid stack the element does not work.** It sits 9 GHz low and
+reflects almost everything. `h/λ₀` was 0.12, which is enormous at 60 GHz — the
+board is 0.6 mm because that is what the rigid islands are, and nobody had
+chosen that number for the antenna.
+
+⭐ **The fix is the stackup, not the artwork.** At 0.25 mm the *same* 1.2 mm patch
+matches at −27.2 dB with 3.5 GHz of bandwidth. On a rigid-flex board that costs
+nothing: the antenna areas keep the flex core and a thin stiffener instead of the
+full rigid buildup. A `.kicad_pcb` carries one board thickness, so it is a
+fabrication note, on the Cmts.User layer and in `dimensions.py`.
+
+⚠️ One element in isolation. No array coupling, no flex bend, no connector
+parasitics, and εr is assumed — the numbers move with it.
+
+**Getting the simulation to run at all took four wrong hypotheses.** It kept
+returning `Energy: ~ nan` from the first timestep, and PML-over-a-conductor, the
+lossy dielectric and the port were all blamed before a uniform-mesh control case
+came back clean and pinned it on **mesh grading**: a 16:1 jump from the cells
+over the patch to the far field. FDTD does not error on that, it silently
+returns NaN. `rf/patch_sim.py` now refuses to run a mesh that will diverge, which
+turns ninety wasted seconds into one line of output.
+
+```bash
+python3 rf/patch_sim.py --sweep
+```
 
 ## Firmware
 

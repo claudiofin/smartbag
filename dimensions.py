@@ -65,6 +65,23 @@ BOARD_W = 196.0
 BOARD_D = 20.0
 BOARD_T = 0.6
 
+# ⛔ THE ANTENNA ISLANDS ARE THINNER THAN THE REST OF THE BOARD, and that is a
+# simulation result, not a preference. A full-wave FDTD of the patch (rf/) says
+# the element as first drawn — 1.2 mm patch on the 0.6 mm rigid stack — gives
+# S11 = -2.5 dB at 50.8 GHz: nine gigahertz off target and reflecting almost
+# everything. h/lambda0 was 0.12, which is enormous at 60 GHz. The board was
+# 0.6 mm because that is what the rigid islands are; nobody had chosen it for
+# the antenna.
+#
+# ⭐ At 0.25 mm the SAME 1.2 mm patch gives -27.2 dB at 59.9 GHz with 3.5 GHz of
+# -10 dB bandwidth. The fix is the stackup, not the artwork — which on a
+# rigid-flex board costs nothing: the antenna areas simply keep the flex core
+# and a thin stiffener instead of the full rigid buildup.
+#
+# ⚠️ A .kicad_pcb carries ONE board thickness, so this cannot be expressed in
+# the board file. It is a fabrication note, and it is on the Cmts.User layer.
+ANTENNA_SUBSTRATE_T = 0.25
+
 # ─── FSR matrix ───────────────────────────────────────────────────────────────
 FSR_COLS, FSR_ROWS = 16, 6
 FSR_FFC_WAYS = 24        # J4: Hirose FH12-24S
