@@ -1,0 +1,33 @@
+# ── Generated artefacts, all reproducible from the scripts ───────────────────
+# Geometry: cad/bag_and_insert.py rebuilds every STL in ~6 s, and
+# tools/pipeline.sh re-exports smartbag_core.glb from the board.
+cad/stl/
+
+# Animation frames: ~2 GB of PNG. tools/render_animation.sh rebuilds them
+# (~26 min), render/build_video.py turns them into the films. The finished
+# films ARE committed, under media/.
+render/anim/
+
+# ── KiCad session state ─────────────────────────────────────────────────────
+# .kicad_pro / .kicad_prl are created by KiCad itself when the board is opened
+# and hold local settings only; the board file is the real artefact.
+hardware/*.kicad_prl
+hardware/*.kicad_pro
+hardware/*-backups/
+hardware/*-bak/
+fp-info-cache
+
+# ── Blender / CAD scratch ───────────────────────────────────────────────────
+*.blend
+*.blend[0-9]
+*.step
+*.stpz
+
+# ── Environments and editors ────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+.DS_Store
