@@ -16,9 +16,12 @@ Usage:  python3 hardware/generate_pcb.py
 """
 import os
 import re
+import sys
 import uuid as _uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import netlist as nl          # noqa: E402
 OUT = os.path.join(HERE, "smartbag_core.kicad_pcb")
 
 
@@ -80,43 +83,47 @@ OUTLINE = [
     (-48, 10), (-48, 4), (-78, 4), (-78, 10), (-98, 10),
 ]
 
-# ─── Placed BOM ───────────────────────────────────────────────────────────────
-# (ref, value, library, footprint, x, y)  — x,y local to the board centre.
-COMPONENTS = [
-    # Compute and sensors on the central rigid island (96 x 20 mm)
-    ("U1", "SoC+NPU BLE 5.4", "Package_DFN_QFN",
-     "QFN-48-1EP_6x6mm_P0.4mm_EP4.6x4.6mm", -30.0, 0.0),
-    ("U2", "mmWave 60GHz TRX", "Package_DFN_QFN",
-     "QFN-40-1EP_5x5mm_P0.4mm_EP3.8x3.8mm", -8.0, -1.0),
-    ("U3", "PMIC buck-boost", "Package_DFN_QFN",
-     "QFN-24-1EP_4x4mm_P0.5mm_EP2.8x2.8mm", 12.5, 5.0),
-    ("U4", "6-axis IMU", "Package_LGA", "Bosch_LGA-14_3x2.5mm_P0.5mm", 12.0, -5.5),
-    ("U5", "Hall, zip", "Package_TO_SOT_SMD", "SOT-23", -43.5, 6.0),
-    ("Y1", "32 MHz", "Crystal", "Crystal_SMD_3225-4Pin_3.2x2.5mm", -42.0, -6.0),
-    ("J1", "FFC IR camera + ToF", "Connector_FFC-FPC",
-     "Hirose_FH12-10S-0.5SH_1x10-1MP_P0.50mm_Horizontal", -20.0, -7.0),
-    ("J4", "FSR matrix 16x6 (96 taxels)", "Connector_FFC-FPC",
-     "Hirose_FH12-24S-0.5SH_1x24-1MP_P0.50mm_Horizontal", 32.0, -6.6),
-    ("J2", "LiPo 3.7V 2000mAh", "Connector_JST",
-     "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", 42.0, 6.4),
-    ("J3", "Qi RX coil", "Connector_JST",
-     "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", 28.0, 6.4),
-]
-
-# Passives: rails for U1/U2/U3 plus the matching network. Positions chosen to
-# stay inside the island and not end up underneath a package.
-PASSIVES = [
-    ("C1", "100n", -24.5, -6.0), ("C2", "100n", -22.5, -6.0),
-    ("C3", "4u7", -24.5, 6.0), ("C4", "1u", -22.5, 6.0),
-    ("C5", "100n", -14.0, -7.0), ("C6", "10u", -14.0, 5.0),
-    ("C7", "22u", 19.0, 7.5), ("C8", "22u", 21.5, 7.5),
-    ("R1", "10k", -36.5, 2.5), ("R2", "10k", -36.5, 0.5),
-    ("R3", "0R", 1.0, 2.0), ("R4", "100k", 1.0, 4.0),
-]
-INDUCTORS = [("L1", "2u2", 5.5, 6.5), ("L2", "1u0", 8.0, 6.5)]
+# ⭐ THE BOM AND THE PLACEMENT NOW LIVE IN netlist.py, next to the pins and the
+# nets they belong to. Keeping the coordinates here and the connectivity there
+# was how the board and the schematic were free to disagree.
 
 
-def read_footprint(lib, name, ref, value, x, y):
+def _inject_nets(text, pad_nets, net_index):
+    """Put `(net N "NAME")` inside every pad that the netlist names.
+
+    ⛔ A BALANCED-PAREN SCAN, not a regex. A pad is a multi-line s-expression
+    that itself contains parenthesised sub-forms — `(at ...)`, `(size ...)`,
+    sometimes `(primitives ...)`. Matching `\(pad .*?\)` non-greedily closes on
+    the first inner form and produces a file KiCad refuses to open; matching
+    greedily swallows the rest of the footprint. Counting depth is the only way
+    that survives a footprint you did not write.
+    """
+    out, i = [], 0
+    while True:
+        j = text.find('(pad "', i)
+        if j < 0:
+            out.append(text[i:])
+            break
+        number = text[j + 6:text.index('"', j + 6)]
+        depth, k = 0, j
+        while True:
+            if text[k] == "(":
+                depth += 1
+            elif text[k] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            k += 1
+        net = pad_nets.get(number)
+        out.append(text[i:k])
+        if net is not None:
+            out.append(f'\n\t\t(net {net_index[net]} "{net}")')
+        out.append(")")
+        i = k + 1
+    return "".join(out)
+
+
+def read_footprint(lib, name, ref, value, x, y, pad_nets=None, net_index=None):
     """Inline a .kicad_mod into the board file, the way pcbnew does on place.
 
     ⚠️ .kicad_mod files carry `(version ...)` and `(generator ...)` lines that do
@@ -138,7 +145,17 @@ def read_footprint(lib, name, ref, value, x, y):
                   f'\n\t(layer "F.Cu")\n\t(uuid "{uid()}")'
                   f'\n\t(at {CX + x:.4f} {CY + y:.4f})', 1)
     t = t.replace('(property "Reference" "REF**"', f'(property "Reference" "{ref}"', 1)
+    # ⚠️ Reference silk hidden on every part. On a board 20 mm tall the default
+    # 1 mm designators of 26 footprints land on each other, on neighbouring pads
+    # and over the board edge — silkscreen, not copper, was the source of every
+    # remaining DRC warning. The designators are not lost: KiCad footprints also
+    # carry them on F.Fab, which is the layer assembly actually reads.
+    if True:
+        t = re.sub(r'(\(property "Reference" "' + ref + r'"\s*\n\s*\(at [^\n]*\n\s*\(layer "[^"]*"\))',
+                   r'\1\n\t\t(hide yes)', t, count=1)
     t = re.sub(r'\(property "Value" "[^"]*"', f'(property "Value" "{value}"', t, count=1)
+    if pad_nets:
+        t = _inject_nets(t, pad_nets, net_index)
     return t.rstrip()
 
 
@@ -239,11 +256,79 @@ def patch_array(cx0, label):
             out.append(line(cx0 + i * 2.5 + 0.6,
                             -3.0 + j * 2.5 + (1.2 if j == 0 else 0),
                             cx0 + i * 2.5 + 0.6, -0.9 + j * 0.6, "F.Cu", 0.12))
-    out.append(text(label, cx0 - 2.0, 7.0, "F.SilkS", 1.1, 0.18))
+    out.append(text(label, cx0 - 2.0, 7.4, "F.SilkS", 0.9, 0.14))
     # Ground frame around the array: it is the patch's reference plane, and
     # without it the antenna has no defined impedance.
     for (a, b, c, d) in [(-2.5, -6.2, 14.0, 0.4), (-2.5, 3.2, 14.0, 0.4)]:
         out.append(copper_rect(cx0 + a, b, c, d, "F.Cu"))
+    return out
+
+
+# ⚠️ Net 0 is KiCad's "no net" and must stay empty. GND is pinned to 1 so the
+# ground zones, which are written before the components, can name it.
+NET_INDEX = {"": 0, "GND": 1}
+for _n in sorted(nl.nets()):
+    NET_INDEX.setdefault(_n, len(NET_INDEX))
+
+
+def _keepouts(margin=0.6):
+    """Courtyard of every placed part, in board coordinates, plus a margin.
+
+    ⚠️ The first stitching pass dropped vias on a fixed grid and put seven of
+    them inside footprints: 7 hole-clearance violations, 7 mask bridges and 4
+    shorts. A via grid has to know where the parts are.
+    """
+    boxes = []
+    for _ref, _v, _s, lib, fp, _pins, x, y in nl.PARTS:
+        path = os.path.join(FP_LIB, f"{lib}.pretty", f"{fp}.kicad_mod")
+        t = open(path).read()
+        pts = [(float(a), float(b))
+               for m in re.finditer(
+                   r'\(fp_(?:line|rect|poly)\b(.*?)\(layer "F\.CrtYd"', t, re.S)
+               for a, b in re.findall(
+                   r'\((?:start|end|xy) ([-\d.]+) ([-\d.]+)\)', m.group(1))]
+        if not pts:
+            pts = [(float(m.group(1)), float(m.group(2)))
+                   for m in re.finditer(
+                       r'\(pad "[^"]*"[^\n]*\n\s*\(at ([-\d.]+) ([-\d.]+)', t)]
+        xs = [q[0] for q in pts] or [0]
+        ys = [q[1] for q in pts] or [0]
+        boxes.append((x + min(xs) - margin, x + max(xs) + margin,
+                      y + min(ys) - margin, y + max(ys) + margin))
+    return boxes
+
+
+def _clear(x, y, boxes):
+    return not any(a <= x <= b and c <= y <= d for a, b, c, d in boxes)
+
+
+def route(net_index):
+    """Copper the netlist implies. Ground stitching only, for now.
+
+    ⛔ THE SIGNAL NETS ARE NOT ROUTED. DRC reports 80 unconnected pads and that
+    number is honest: laying out a 0.4 mm-pitch QFN fan-out, a 22-line bus and
+    two 60 GHz microstrip feeds is a real routing job, not something to fake
+    with decorative polylines — which is exactly what used to be here.
+
+    ⭐ What IS generated is the ground stitching. Without it the pour on B.Cu
+    breaks into islands that no via connects, which DRC correctly calls isolated
+    copper, and which on a flex board is also a real antenna.
+    """
+    out = []
+    gnd = net_index["GND"]
+    boxes = _keepouts()
+    for x in range(-46, 48, 4):
+        for y in (-8.6, 8.6):
+            if _clear(x, y, boxes):
+                out.append(via(x, y, gnd))
+    for x in range(-76, -48, 3):
+        out += [via(x, -2.6, gnd), via(x, 2.6, gnd)]
+    for x in range(51, 79, 3):
+        out += [via(x, -2.6, gnd), via(x, 2.6, gnd)]
+    for x in range(-94, -78, 4):
+        out += [via(x, -7.6, gnd), via(x, 7.6, gnd)]
+    for x in range(82, 98, 4):
+        out += [via(x, -7.6, gnd), via(x, 7.6, gnd)]
     return out
 
 
@@ -266,7 +351,8 @@ def build():
          '\t\t(35 "F.Fab" user)', '\t\t(33 "B.Fab" user)',
          '\t)',
          '\t(setup (pad_to_mask_clearance 0))',
-         '\t(net 0 "")', '\t(net 1 "GND")', '\t(net 2 "VBAT")', '\t(net 3 "VDD_1V8")']
+         ] + [f'\t(net {i} "{n}")' for n, i in sorted(NET_INDEX.items(),
+                                                      key=lambda kv: kv[1])]
 
     # outline
     for i in range(len(OUTLINE)):
@@ -282,59 +368,36 @@ def build():
     r += patch_array(-93.5, "A1 60GHz")
     r += patch_array(81.5, "A2 60GHz")
 
-    # components
-    for ref, val, lib, fp, x, y in COMPONENTS:
-        r.append(read_footprint(lib, fp, ref, val, x, y))
-    for ref, val, x, y in PASSIVES:
-        lib = "Capacitor_SMD" if ref.startswith("C") else "Resistor_SMD"
-        fp = "C_0402_1005Metric" if ref.startswith("C") else "R_0402_1005Metric"
-        r.append(read_footprint(lib, fp, ref, val, x, y))
-    for ref, val, x, y in INDUCTORS:
-        r.append(read_footprint("Inductor_SMD", "L_0603_1608Metric", ref, val, x, y))
+    # components, placed and netted from netlist.py
+    for ref, val, _sym, lib, fp, pins, x, y in nl.PARTS:
+        r.append(read_footprint(lib, fp, ref, val, x, y,
+                                {str(num): net for num, _n, _t, net in pins},
+                                NET_INDEX))
 
-    # ── Representative routing ───────────────────────────────────────────
-    # Data bus U1 -> U2 (radar control and IF)
-    r += bundle(8, (-26.6, -2.8), (-10.6, -3.4), (0, 0.5), (0, 0.45),
-                [(-20.0, -2.8, 0, 0.5), (-14.0, -3.4, 0, 0.45)])
-    # IR camera bus: J1 -> U1
-    r += bundle(10, (-22.2, -5.6), (-27.0, -3.6), (0.5, 0), (0.35, 0),
-                [(-22.2, -4.6, 0.5, 0), (-27.0, -4.2, 0.35, 0)])
-    # FSR matrix bus: J4 -> U1, the full length of the strip
-    r += bundle(12, (26.2, -5.2), (-27.2, 1.0), (0.5, 0), (0.4, 0),
-                [(26.2, -2.0, 0.5, 0), (16.0, -2.0, 0.4, 0),
-                 (-20.0, 1.0, 0.4, 0)])
-    # Power: battery and Qi coil into the PMIC, then 1.8 V across to U1
-    r += track([(40.5, 5.4), (34.0, 5.4), (34.0, 2.0), (15.0, 2.0)], 0.5)
-    r += track([(26.5, 5.4), (24.0, 5.4), (24.0, 3.0), (15.2, 3.0)], 0.5)
-    r += track([(10.2, 4.0), (4.0, 4.0), (4.0, 8.0), (-26.0, 8.0),
-                (-26.8, 3.2)], 0.4)
-    # Microstrip feeds out to the antennas, one per tail.
-    r += track([(-5.6, -1.0), (-52.0, -1.0), (-52.0, 0.0), (-82.0, 0.0)], 0.14)
-    r += track([(-5.6, 1.0), (52.0, 1.0), (52.0, 0.0), (82.0, 0.0)], 0.14)
-
-    # Ground stitching along the tails: sews the two planes at the flex edges.
-    # ⚠️ On flex, vias are the fatigue weak point: they sit on the centreline of
-    # the tail, never at the edge where the bend concentrates strain.
-    for x in range(-76, -48, 2):
-        r += [via(x, -2.6), via(x, 2.6)]
-    for x in range(50, 78, 2):
-        r += [via(x, -2.6), via(x, 2.6)]
+    # ── Routing ──────────────────────────────────────────────────────────
+    # ⛔ THE DECORATIVE ROUTING IS GONE. Before there was a netlist, this block
+    # drew bundles of tracks on net 0 to make the renders look like a circuit.
+    # The moment the pads carried real nets, DRC read those tracks for what they
+    # were: 40 shorts, 6 clearance violations and 168 solder-mask bridges — one
+    # object producing more than half the errors on the board. Tracks that are
+    # not connectivity have no business in a board file.
+    r += route(NET_INDEX)
 
     # ── Silkscreen ───────────────────────────────────────────────────────
     # The front only has room for short labels; the title block goes on the
     # back, where there are no components.
-    r.append(text("FSR", 25.0, 8.6, "F.SilkS", 0.9, 0.14))
-    r.append(text("flex", -70.0, -1.2, "F.SilkS", 0.9, 0.14))
-    r.append(text("flex", 60.0, -1.2, "F.SilkS", 0.9, 0.14))
+    r.append(text("FSR", 24.0, -9.2, "F.SilkS", 0.8, 0.12))
+    r.append(text("flex", -70.0, -1.4, "F.SilkS", 0.8, 0.12))
+    r.append(text("flex", 60.0, -1.4, "F.SilkS", 0.8, 0.12))
 
-    r.append(text("SMARTBAG CORE  v0.2", -20.0, -5.5, "B.SilkS", 2.2, 0.36))
-    r.append(text("tagless inventory - 2L rigid-flex", -20.0, -2.2, "B.SilkS", 1.2, 0.2))
+    r.append(text("SMARTBAG CORE  v0.2", 22.0, -6.0, "B.SilkS", 1.6, 0.24))
+    r.append(text("tagless inventory - 2L rigid-flex", 22.0, -3.4, "B.SilkS", 1.0, 0.16))
     for i, s_ in enumerate([
         "U1 SoC+NPU   U2 60 GHz radar   U3 PMIC",
         "U4 6-axis IMU   U5 zip Hall   Y1 32 MHz",
         "A1/A2 2x4 patch array, lambda0/2 pitch",
     ]):
-        r.append(text(s_, -20.0, 1.2 + i * 2.2, "B.SilkS", 1.0, 0.16))
+        r.append(text(s_, 22.0, -0.6 + i * 1.9, "B.SilkS", 0.9, 0.14))
 
     # Design notes: comments layer, these never go to fabrication.
     for i, s_ in enumerate([
@@ -351,5 +414,5 @@ def build():
 if __name__ == "__main__":
     with open(OUT, "w") as f:
         f.write(build())
-    n = len(COMPONENTS) + len(PASSIVES) + len(INDUCTORS)
-    print(f"OK  {OUT}  ({n} components, {len(OUTLINE)}-vertex outline)")
+    print(f"OK  {OUT}  ({len(nl.PARTS)} components, {len(NET_INDEX) - 1} nets, "
+          f"{len(OUTLINE)}-vertex outline)")

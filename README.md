@@ -17,32 +17,32 @@ the films. One command runs the whole chain, from KiCad to a finished MP4.
 
 ## Read this first
 
-This is a **design study**, not a product and not a manufacturable design.
+This is a **design study**. Some of it is now checked by machine; none of it has
+been built.
 
-- There is **no schematic**, therefore no netlist. **ERC and DRC do not pass.**
-  The routing is representative — drawn to show the buses, not to be fabricated.
-- The part numbers are component *classes* (`SoC+NPU`, `mmWave 60GHz TRX`), not
-  chosen MPNs. Nothing has been price-checked or availability-checked.
-- No thermal analysis, no power budget, no RF simulation of the patch antennas.
-- Nothing here has been built. Not one board has been ordered.
-- **No firmware exists.** The recognition side is described in
-  [The data model](#the-data-model), not implemented — and the hardest part
-  of it (classifying an object from three IR frames on an MCU NPU) is the
-  constraint that decides whether any of this stands up.
-- **No app exists either.** The phone side and the BLE interface are specified
-  in [docs/app-and-ble.md](docs/app-and-ble.md) — service, characteristics,
-  enrollment flow, and why the *insert* owns the identity rather than the bag —
-  but none of it is written.
+| | |
+|---|---|
+| schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
+| board | matches the schematic. **DRC: 0 violations, 0 footprint errors.** |
+| routing | **not done.** DRC also reports **80 unconnected pads**, and that number is the honest measure of what is left. |
+| part numbers | component *classes* (`SoC+NPU`, `mmWave 60GHz TRX`), not chosen MPNs. Nothing priced, nothing checked for availability. |
+| firmware | the **wake-up chain and the ledger exist and are tested** (28 assertions, `-Werror`). No drivers, no RTOS, no BLE stack. |
+| recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). Trained on synthetic renders, so read it as a test of the method, not of the product. |
+| app | **specified, not written** — [docs/app-and-ble.md](docs/app-and-ble.md). |
+| RF, thermal, power | no simulation of the patch antennas, no thermal analysis, no measured power budget. |
 
-What **is** real: the outline, the footprints (stock KiCad libraries, so the 3D
-models in the renders are the actual parts), the mechanical dimensions, the fits
-and clearances, and the internal consistency between them — e.g. the number of
-taxels and the number of ways on the connector that serves them.
+Run everything that can be checked:
 
-Treat it as a layout mockup plus an assembly model, at the stage where it is
-useful for showing an idea and for discovering mechanical constraints.
+```bash
+./tools/verify.sh
+```
 
----
+```
+== design constraints ==   all constraints hold
+== firmware ==             ok  28 checks, 0 failures
+== ERC ==                  0 violations
+== DRC ==                  0 violations · 80 unconnected pads · 0 footprint errors
+```
 
 ## What it is
 
@@ -182,6 +182,105 @@ killed several things that looked fine on paper:
   stealing attention from the sensors. An object descending on its own is
   understood in the first frame and has nothing to get wrong.
 
+## The circuit
+
+The connectivity is declared once, in [`hardware/netlist.py`](hardware/netlist.py):
+pins, electrical types and nets for 26 parts. Three things consume it — the
+schematic generator, the board generator, and the checks — so the board and the
+schematic cannot drift apart. `kicad-cli pcb drc --schematic-parity` reports
+**0 footprint errors**, which is that claim, verified.
+
+**ERC found two things that were genuinely missing**, and the fix was to add
+them rather than to silence the check:
+
+- **no way to program the board.** SWDIO and SWCLK went nowhere. There is now a
+  4-way SWD connector (J5), with its pins declared *bidirectional*, which is
+  both electrically accurate and what makes ERC see the SoC's SWCLK input as
+  driven.
+- **a BLE radio with no antenna.** The SoC's ANT pin connected to nothing. There
+  is now a 2.4 GHz chip antenna (AE1).
+
+**DRC went from 439 violations to 0**, and almost all of the reduction was
+deleting something rather than adding it:
+
+| | |
+|---|---|
+| 439 → 215 | the board never declared its process. It is 0.1 mm lines on 2-layer polyimide flex with 0.3/0.15 vias; judged against KiCad's generic 0.2 mm defaults it collected 108 track-width and 112 via/drill violations that said nothing about the layout. |
+| 215 → 1 | **the decorative routing.** Before there was a netlist, the generator drew bundles of tracks on net 0 to make the renders look like a circuit. Once the pads carried real nets, DRC read those tracks for what they were: 40 shorts, 6 clearance violations, 168 solder-mask bridges — one object producing more than half the errors on the board. |
+| 1 → 0 | a courtyard overlap, and silkscreen. |
+
+⛔ **The board is not routed.** Fanning out a 0.4 mm-pitch QFN-48, laying a
+22-line bus and two 60 GHz microstrip feeds is a real job, and faking it with
+decorative polylines is exactly the mistake that was just removed.
+
+## Firmware
+
+[`firmware/`](firmware/) is the wake-up chain, the inventory ledger and the
+staleness rule, in portable C with no HAL and no RTOS. Time and sensor events
+are injected, so all of it runs on a host — and does, under `-Wall -Wextra
+-Werror`.
+
+⭐ **The power budget is the architecture.** A camera plus NPU burst costs more
+than the radio does all day, so nothing polls: each stage is armed only by the
+one before it, and the chain is armed only when the closure opens.
+
+**The tests caught three real bugs**, all of which would have been miserable to
+find on hardware:
+
+- the **first** closure edge was eaten by the debounce, because it was compared
+  against a zero-initialised timestamp. On a real board, every opening in the
+  first moment after boot.
+- **reopening the bag while it was waiting to settle did nothing.** The device
+  sat with the mouth wide open, ignoring everything put into it.
+- **MEASURE was a resting state**, and took a second tick to leave. In a test of
+  forty insertions, exactly half were dropped on the floor.
+
+```bash
+make -C firmware test
+```
+
+## Recognition
+
+[`ml/`](ml/) is the enrolment pipeline, and it runs. `render_dataset.py` renders
+1650 training images through the collar module's real optics — 2.6 mm lens,
+four IR illuminators at their spacing on the board, nothing else lit,
+motion-blurred, monochrome, noisy. `classify.py` trains a small embedding
+(~180k MACs per frame, the scale an MCU NPU can run inside the burst) on eight
+objects the product never sees, then enrols five it has never seen from five
+samples each.
+
+| measurement | result |
+|---|---|
+| closed set, single frame | **0.760** (chance 0.200) |
+| closed set, 3-frame burst *as the device takes* | **0.817** |
+| enrolled objects accepted | 0.808 |
+| unknown objects rejected | **0.527** |
+| two identical objects, 20 splits | mean 0.477, range 0.232–0.705 |
+
+Three honest readings of that table:
+
+- **The 3-frame burst earns its place.** 0.760 → 0.817 for free, which is why
+  the firmware captures three.
+- **Closed-set recognition works; open-set does not.** The similarity
+  distributions overlap — enrolled p05 0.628 against unknown p95 0.972 — so no
+  threshold separates them. "Which of my objects is this" is answerable here;
+  "is this something I have never seen" is not.
+- **Two identical objects are arbitrary, and the spread proves it.** A single
+  split gave 0.284, which looks like a finding and is not: with five samples per
+  prototype, whichever half lands nearer the centroid attracts most probes.
+  Across twenty splits it swings from 0.23 to 0.71. No threshold and no training
+  fixes this — the answer has to be "there are two of these".
+
+⛔ **The subjects are primitives.** Telling a box from a cylinder is not the hard
+part of object recognition, and none of this says a wallet can be told from a
+passport. What is reproduced faithfully is the *imaging condition*, and that is
+what the numbers are about.
+
+```bash
+blender -b --python ml/render_dataset.py -- --samples 110    # ~12 min
+python3 ml/classify.py                                       # ~50 s
+```
+
 ## The data model
 
 If the objects shift around while you walk, is the data still right? **The
@@ -273,8 +372,9 @@ it does not recognise faces, it recognises yours, after you have registered it.
 As a side effect it also softens the identical-objects case, because two
 lipsticks enrolled separately still have slightly different embeddings.
 
-**None of this is implemented here.** This repo is geometry, layout and renders;
-the firmware side is described, not written. The other missing half — the phone
+**Partly implemented now.** The wake-up chain, the ledger and the staleness rule
+are in [`firmware/`](firmware/) and tested; the re-association and the
+enrolment matching are described here but not written. The other missing half — the phone
 app, and the BLE contract between the two — is specified in
 [docs/app-and-ble.md](docs/app-and-ble.md), including the decision that settles
 its whole data model: **the insert owns the identity, not the bag.** The insert
@@ -289,6 +389,9 @@ with its own inventory.
 ```
 dimensions.py                every shared dimension, in one file
 tools/check.py               asserts the constraints the renders discovered
+tools/verify.sh              checks + firmware tests + ERC + DRC, one command
+hardware/netlist.py          pins, nets and part classes: one source
+hardware/generate_schematic.py  symbols, schematic, project file
 hardware/generate_pcb.py     generates the KiCad board (s-expressions)
 hardware/fill_zones.py       zone fill (needs KiCad's own Python)
 cad/bag_and_insert.py        bag + insert in CadQuery -> STL
@@ -299,6 +402,10 @@ tools/pipeline.sh            the full chain (stills)
 tools/render_animation.sh    the film frames
 tools/render_pcb.sh          board renders only
 docs/app-and-ble.md          the companion app and the BLE contract (spec only)
+firmware/smartbag.[ch]       wake-up chain, ledger, staleness rule (portable C)
+firmware/test_smartbag.c     28 host assertions
+ml/render_dataset.py         training images through the collar's real optics
+ml/classify.py               embedding, enrolment, measurement
 ```
 
 Generated artefacts that are **not** committed (all regenerable):
@@ -311,12 +418,16 @@ committed so the repo is useful without running anything.
 - **KiCad 10** — `kicad-cli` plus KiCad's bundled Python for `pcbnew`
 - **CadQuery** and **Pillow** on system python3
 - **ffmpeg**
+- **PyTorch** and **NumPy**, for `ml/` only
+- a **C compiler**, for `firmware/` only
 
 The KiCad footprint library and the caption fonts are looked up across the usual
 macOS / Linux / Windows locations, and can be overridden with
 `KICAD_FOOTPRINT_DIR`, `SMARTBAG_FONT_BOLD` and `SMARTBAG_FONT_REGULAR`.
 
-## Two Blender 5 traps that cost real time
+## Traps that cost real time
+
+### Blender 5
 
 - **`action.fcurves` no longer exists.** Since 4.4 actions are layered and
   slotted; the curves live in
@@ -326,6 +437,22 @@ macOS / Linux / Windows locations, and can be overridden with
   (intact) the moment the cutter gets an action of its own — with the EXACT
   solver and with FLOAT alike. The fix is to animate a **parent empty** and
   leave the operand static.
+- **The near clip plane eats close subjects.** Blender defaults `clip_start` to
+  0.1 m. The dataset camera works at 5–20 cm, so most of every subject was in
+  front of the near plane and simply not rendered. It looked exactly like a
+  lighting problem, and was chased as one for three attempts.
+
+### KiCad 10
+
+- **`kicad-cli sch erc` needs a `.kicad_pro`** to read `sym-lib-table`. Without
+  one, every symbol in a generated library comes back as a `lib_symbol_issues`
+  warning.
+- **A pad is a nested s-expression.** Injecting nets with a regex either closes
+  on the first inner form or swallows the rest of the footprint; the depth has
+  to be counted.
+- **The design rules live in the project file**, not the board. Leave it out and
+  DRC judges an advanced flex process by generic defaults — 220 violations that
+  are about the missing file, not the layout.
 
 ## Licence
 
