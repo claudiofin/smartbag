@@ -32,3 +32,8 @@ get A121_acconeer.pdf   "https://developer.acconeer.com/download/a121-datasheet"
 get nPM1300_nordic.pdf  "https://download.mikroe.com/documents/datasheets/nPM1300_datasheet.pdf"
 get BMI270_bosch.pdf    "https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
 get DRV5032_ti.pdf      "https://www.ti.com/lit/ds/symlink/drv5032.pdf"
+# ⭐ 13 MB, and worth every byte: it is the only source found that carries the
+# QFN48 pin assignment figure. Nordic's own docs site paywalls the PDF and
+# renders the table across page breaks in a way no text extractor survives — the
+# figure had to be rasterised and read as an image.
+get nRF54L15_nordic.pdf "https://files.seeedstudio.com/wiki/XIAO_nRF54L15/Getting_Start/Nordic_nRF54L15_Datasheet_v1.0.pdf"
