@@ -25,6 +25,10 @@ This is a **design study**, not a product and not a manufacturable design.
   chosen MPNs. Nothing has been price-checked or availability-checked.
 - No thermal analysis, no power budget, no RF simulation of the patch antennas.
 - Nothing here has been built. Not one board has been ordered.
+- **No firmware exists.** The recognition side is described in
+  [The data model](#the-data-model), not implemented — and the hardest part
+  of it (classifying an object from three IR frames on an MCU NPU) is the
+  constraint that decides whether any of this stands up.
 
 What **is** real: the outline, the footprints (stock KiCad libraries, so the 3D
 models in the renders are the actual parts), the mechanical dimensions, the fits
@@ -164,7 +168,7 @@ killed several things that looked fine on paper:
   stealing attention from the sensors. An object descending on its own is
   understood in the first frame and has nothing to get wrong.
 
-## The data model (and its weak point)
+## The data model
 
 If the objects shift around while you walk, is the data still right? **The
 inventory yes, the position no** — and they are two different data with two
@@ -176,24 +180,12 @@ different lifetimes.
 - **The position is perishable.** After 200 metres of walking the map is
   garbage. The **IMU integrates disturbance** since the last valid map; past a
   threshold the map is marked *stale* — not recomputed, just marked.
-- **You do not re-measure while walking.** Worst possible moment: high current
-  draw and a false result, because everything is moving. Re-measurement happens
-  at the first **moment of rest** (IMU still for ~2 s, i.e. the bag set down). A
-  radar ping plus an FSR read is ~100–150 ms.
 - **The FSR is the cheap always-on sentinel.** 96 multiplexed taxels are a
-  few-millisecond read at ~2 mA: run it at 1 Hz and you notice the mass
+  few-millisecond read at ~2 mA: run it at 1–2 Hz and you notice the mass
   distribution changed without ever waking the radar.
-- **The hard part is re-association, not re-measurement.** After a shake the
-  radar sees N masses but does not know which is which. The system is in a much
-  better position than open-set recognition though: **the set of objects is
-  known** from the ledger. It is not "what are these things", it is "assign 5
-  measured signatures to 5 known labels" — an assignment problem over a small
-  cost matrix (footprint and mass from the FSR, dielectric signature from the
-  radar, compartment constraint from the dividers).
-- **The honest failure:** two similar objects (two lipsticks, two key rings)
-  stay indistinguishable. There the system must **degrade rather than invent**:
-  "lipstick — right compartment" instead of coordinates. An app that says "under
-  the pouch" when it no longer knows is worse than one that says "not sure".
+- **A full re-measurement waits for stillness.** A radar ping plus an FSR read
+  is ~100–150 ms and wants a quiet moment (IMU still for ~2 s, i.e. the bag set
+  down), because mid-stride everything is moving.
 
 | datum | when it changes | how it updates |
 |---|---|---|
@@ -203,6 +195,72 @@ different lifetimes.
 Energy is not the constraint: a radar ping is ~3–5 µAh, so even 30
 re-mappings a day stay under 0.2 mAh out of a 2000 mAh cell. The cost is all in
 deciding **when** to look.
+
+### Re-association is firmware, not physics
+
+Once the contents have been shaken up, which measured mass is which object? This
+sounds like the hard part and it is not — as long as you do not insist on
+sleeping through the disturbance. Sample the FSR at 1–2 Hz while the bag moves
+and you are **tracking**, not re-identifying from scratch, which is a solved
+problem (a filter per object plus data association per frame).
+
+Even after a total loss of lock, four things make it tractable:
+
+- **Closed, small set.** Not "what are these things" but "assign 5 measured
+  signatures to 5 known labels". Hungarian over a 5×5 cost matrix: microseconds
+  on the MCU.
+- **Discriminative features on a heterogeneous set.** Wallet (105×20 footprint,
+  high mass, low dielectric), keys (small hard footprint, very high radar
+  reflectivity), phone (large flat footprint, metal + glass signature), lipstick
+  (18 mm circle, 25 g). In a 4–5 dimensional space they separate on their own.
+- **Transition priors.** Objects do not teleport: what was in compartment B is
+  far likelier to still be in B. One more term in the cost matrix.
+- **Self-correction.** The next mouth event is ground truth — the camera sees
+  what left, and every hypothesis inconsistent with it dies. A bad assignment
+  lasts until the next time the bag is opened, not forever.
+
+The one real complication: **while walking, the FSR reads inertial load, not
+static mass** — everything gets heavier and lighter with the gait cycle. The fix
+is to gate on the IMU and only accept samples inside low-acceleration windows.
+That costs firmware, not physics.
+
+### Two identical objects: a real limit, with a deliberate escape hatch
+
+Two physically identical objects are indistinguishable to any sensor. That one
+does not get engineered away. But:
+
+- **Usually it does not matter.** With two identical lipsticks the question is
+  "where is my lipstick", and "there are two, one here and one there" is a
+  complete answer.
+- **When it does matter** — two similar key rings, home and office — the answer
+  is not a better sensor, it is **a tag on that one object**. A RAIN RFID
+  sticker costs about €0.05. "Tagless" is a claim about the general case;
+  letting the user tag the two or three objects where identity genuinely carries
+  meaning is honest product design, not a defeat.
+
+Where identity is ambiguous the system must **degrade rather than invent**:
+"lipstick — right compartment" instead of coordinates. An app that says "under
+the pouch" when it no longer knows is worse than one that says "not sure".
+
+### The actual hard problem: classification, and why enrollment is the answer
+
+Not re-association. **Recognising an arbitrary object from three IR frames as it
+passes, on a microcontroller NPU, on battery.** That is open-set recognition, and
+at this power budget it is genuinely unsolved. It is the constraint that decides
+whether the product stands up, and it is harder than everything above put
+together.
+
+The realistic way out is **enrollment**: the system does not recognise objects,
+it recognises *yours*. You show each one to the camera once, deliberately, and
+its embedding is stored. After that it is a nearest-neighbour lookup in a set of
+about twenty — a trivial problem instead of an open one. Same model as Face ID:
+it does not recognise faces, it recognises yours, after you have registered it.
+
+As a side effect it also softens the identical-objects case, because two
+lipsticks enrolled separately still have slightly different embeddings.
+
+**None of this is implemented here.** This repo is geometry, layout and renders;
+the firmware side is described, not written.
 
 ---
 
