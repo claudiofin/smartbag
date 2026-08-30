@@ -113,33 +113,39 @@ def assign_lanes(nets, pads):
 
 
 def route(parts, fp_lib, net_index, seg, via, keepout):
-    """RF feeds only. The signal nets are NOT routed, and this is why.
+    """Ground stitching only. The signals are routed by Freerouting — see below.
 
-    ⛔ THREE ATTEMPTS, ALL REJECTED BY DRC, IN THIS ORDER:
+    ⛔ THREE HAND-WRITTEN ATTEMPTS, ALL REJECTED BY DRC: 466, 989 and 852
+    violations. What they were blamed on at the time, and what was actually
+    true, are not the same thing, and the difference is worth more than the
+    attempts were:
 
-      1. Two layers, escape stubs on F.Cu and lanes on B.Cu.
-         Everything connected — 0 unconnected pads — but 466 violations: with a
-         single signal layer the horizontal lanes and the vertical drops share
-         it and must cross. 116 crossings, 165 clearance.
-      2. Four layers, one axis each, escapes still on F.Cu.
-         Worse: 989. The escape stubs have to fan sideways to give twelve pads
-         in a QFN column twelve distinct escape columns, and sideways is where
-         the other parts are.
-      3. Four layers, via-in-pad, a reserved column per pad and lane per net.
-         852. The jogs from each via to its column run at the pad's own y, and
-         pads sharing a y — every QFN row — collide along it.
+      CLAIMED: "at 0.4 mm pitch via-in-pad is not optional." ⛔ FALSE, and
+        falsified by simply routing the board: Freerouting connects it with 215
+        ordinary vias and no via-in-pad anywhere.
+      CLAIMED: "two layers cannot carry this board." Still true, and still only
+        ever measured on two layers. Three signal layers over a solid reference
+        plane carry it comfortably.
+      CLAIMED: "what is missing is a maze router with rip-up and retry." ⭐ TRUE,
+        and it was the only one of the three that mattered. Rip-up is the whole
+        difference: a router that places a track and never reconsiders paints
+        itself into the first congested channel it meets, which is exactly how
+        all three attempts died, in three different channels.
 
-    ⭐ WHAT THAT ACTUALLY ESTABLISHED, which is worth more than a bad layout:
-      - at 0.4 mm pitch **via-in-pad is not optional**, there is nowhere else
-        for the via to go;
-      - **two layers cannot carry this board**, measured rather than asserted;
-      - what is missing is not a bigger board or a cleverer floorplan but a
-        maze router with rip-up and retry, and that is a project of its own.
+    ⚠️ AND ONE CAUSE NOBODY HAD LOOKED FOR. Those attempts were routing to a
+    0.2 mm track width and 0.2 mm clearance — KiCad's generic netclass default,
+    because this project declared its process *minimums* in the project file and
+    never declared what the design actually uses. The board is a 0.1 mm process.
+    Half the escape problem was self-inflicted and invisible: DRC cannot
+    complain that 0.2 mm is too wide when 0.1 mm is merely the floor. It took
+    handing the file to a router — which routes to the netclass — for the gap to
+    show up at all.
 
-    ⚠️ So the board is unrouted, DRC reports 80 unconnected pads, and that number
-    is the honest size of the gap. Decorative tracks that make renders look like
-    a circuit were deleted once already; they are not coming back as a
-    substitute for routing.
+    ⭐ SO THE ROUTING LIVES IN tools/route.sh, and the session file it produces is
+    committed as hardware/smartbag_core.ses so the routed board is reproducible
+    without a Java runtime. What stays here is ground stitching, which is a
+    placement problem rather than a routing one: vias tying the three ground
+    pours together, dropped where no part or keepout objects.
     """
     pads = pad_positions(fp_lib, parts)
     nets = {}
@@ -157,9 +163,10 @@ def route(parts, fp_lib, net_index, seg, via, keepout):
     # round trip costs a factor of ~2.8 in range before the antenna has done
     # anything.
     #
-    # ⚠️ That is an ARCHITECTURE problem, not a routing one: a transceiver in
-    # the middle cannot feed two antennas at the ends of a 196 mm board at
-    # 60 GHz. Drawing the trace anyway would hide it. The options are in
-    # rf/feed_loss.py, and choosing between them is not a decision this file
-    # gets to make.
+    # ⭐ AND THE REAL PART SETTLES IT. hardware/bom.py went looking for a 60 GHz
+    # transceiver you can actually buy and found the Acconeer A121, whose
+    # datasheet says the antenna is inside the package and "it is not possible
+    # to connect trace antenna". So the feed this file could not draw is a feed
+    # that does not exist in any real design — you put the sensor where its
+    # antenna has to be. ANT_A1 and ANT_A2 should not be nets at all.
     return out

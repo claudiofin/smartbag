@@ -252,9 +252,13 @@ def write_project():
                 "solder_mask_min_width": 0.05,
                 "solder_mask_to_copper_clearance": 0.0,
             },
-            "track_width_list": [0.0, 0.1, 0.15, 0.25, 0.5],
+            "track_width_list": [0.0, 0.1, 0.15, 0.3, 0.58, 1.4],
+            # ⛔ 0.35, not 0.3. min_via_annular_width above is 0.1, and a 0.3 mm
+            # pad on a 0.15 mm drill leaves 0.075 — the file was offering a via
+            # size its own rules forbid, and nothing caught it until an
+            # autorouter was handed the rules and asked to use them.
             "via_dimensions": [{"diameter": 0.0, "drill": 0.0},
-                               {"diameter": 0.3, "drill": 0.15}],
+                               {"diameter": 0.35, "drill": 0.15}],
             "defaults": {
                 "board_outline_line_width": 0.1,
                 "copper_line_width": 0.15,
@@ -263,6 +267,96 @@ def write_project():
                 "silk_text_thickness": 0.12,
             },
         }},
+        # ⛔ THE NETCLASS IS NOT THE SAME THING AS THE MINIMUMS, and leaving it
+        # out cost a routing attempt. `rules` above says what the process can
+        # do; a netclass says what the design *uses*, and with none declared
+        # KiCad supplies its generic 0.2 mm/0.2 mm/0.6 mm default. DRC never
+        # complained — 0.2 is comfortably above a 0.1 minimum — so the gap was
+        # invisible until the board was exported to a router, which routes to
+        # the netclass and found a 0.4 mm-pitch QFN unescapable at 0.2 mm.
+        "net_settings": {
+            "classes": [
+                {
+                    "name": "Default",
+                    "clearance": 0.1, "track_width": 0.1,
+                    "via_diameter": 0.35, "via_drill": 0.15,
+                    "microvia_diameter": 0.2, "microvia_drill": 0.1,
+                    "diff_pair_width": 0.1, "diff_pair_gap": 0.15,
+                    "diff_pair_via_gap": 0.15,
+                    "priority": 2147483647,
+                    "pcb_color": "rgba(0, 0, 0, 0.000)",
+                    "schematic_color": "rgba(0, 0, 0, 0.000)",
+                    "line_style": 0, "bus_width": 12, "wire_width": 6,
+                },
+                {
+                    # ⚠️ The rails carry a 1 A charge current and a camera burst.
+                    # 0.1 mm of 1 oz copper is about 0.5 A; three times the
+                    # width is not decoration.
+                    "name": "Power",
+                    "clearance": 0.15, "track_width": 0.3,
+                    "via_diameter": 0.45, "via_drill": 0.25,
+                    "microvia_diameter": 0.2, "microvia_drill": 0.1,
+                    "diff_pair_width": 0.1, "diff_pair_gap": 0.15,
+                    "diff_pair_via_gap": 0.15,
+                    "priority": 2,
+                    "pcb_color": "rgba(0, 0, 0, 0.000)",
+                    "schematic_color": "rgba(0, 0, 0, 0.000)",
+                    "line_style": 0, "bus_width": 12, "wire_width": 6,
+                },
+                # ⛔ TWO RF CLASSES, NOT ONE, and the first version got this
+                # wrong. 50 ohms is not a width, it is a width *on a substrate*:
+                # rf/feed_loss.py puts it at 0.581 mm on the 0.25 mm antenna
+                # islands and 1.395 mm on the 0.6 mm rigid stack. One class
+                # applied the 60 GHz island number to a 2.4 GHz trace that never
+                # goes near an island — a trace that would have been built at
+                # less than half its correct width, and matched nothing.
+                {
+                    # ⚠️ Declaring this does not make the 60 GHz feeds
+                    # buildable — see the RF section — it stops a router from
+                    # silently drawing them at signal width, which would look
+                    # like a solved problem.
+                    "name": "RF_60G",
+                    "clearance": 0.2, "track_width": 0.58,
+                    "via_diameter": 0.45, "via_drill": 0.25,
+                    "microvia_diameter": 0.2, "microvia_drill": 0.1,
+                    "diff_pair_width": 0.58, "diff_pair_gap": 0.2,
+                    "diff_pair_via_gap": 0.2,
+                    "priority": 1,
+                    "pcb_color": "rgba(0, 0, 0, 0.000)",
+                    "schematic_color": "rgba(0, 0, 0, 0.000)",
+                    "line_style": 0, "bus_width": 12, "wire_width": 6,
+                },
+                {
+                    # ⛔ 0.2, not 0.25, and DRC had to say so. A netclass
+                    # clearance applies at the *pad* as well as along the trace,
+                    # and this net lands on a 0.4 mm-pitch QFN where pad-to-pad
+                    # is 0.2 mm by construction. Asking for 0.25 made the
+                    # package itself illegal — three violations that were not
+                    # about the layout at all. Wider RF clearance has to come
+                    # from a custom rule that exempts pads, not from the class.
+                    "name": "RF_24G",
+                    "clearance": 0.2, "track_width": 1.4,
+                    "via_diameter": 0.45, "via_drill": 0.25,
+                    "microvia_diameter": 0.2, "microvia_drill": 0.1,
+                    "diff_pair_width": 1.4, "diff_pair_gap": 0.25,
+                    "diff_pair_via_gap": 0.25,
+                    "priority": 1,
+                    "pcb_color": "rgba(0, 0, 0, 0.000)",
+                    "schematic_color": "rgba(0, 0, 0, 0.000)",
+                    "line_style": 0, "bus_width": 12, "wire_width": 6,
+                },
+            ],
+            "meta": {"version": 4},
+            "net_colors": None,
+            "netclass_assignments": None,
+            "netclass_patterns": (
+                [{"netclass": "Power", "pattern": n}
+                 for n in ("VBAT", "VQI", "VDD_3V3", "VDD_1V8", "SW1", "SW2")]
+                + [{"netclass": "RF_60G", "pattern": n}
+                   for n in ("ANT_A1", "ANT_A2")]
+                + [{"netclass": "RF_24G", "pattern": "BLE_ANT"}]
+            ),
+        },
         "libraries": {"pinned_footprint_libs": [], "pinned_symbol_libs": []},
         "meta": {"filename": f"{NAME}.kicad_pro", "version": 3},
         "schematic": {"legacy_lib_dir": "", "legacy_lib_list": []},

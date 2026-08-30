@@ -37,6 +37,11 @@ grep -E "Found .* (DRC violations|unconnected pads|Footprint errors)" /tmp/smart
   | sed 's/^\*\* /  /;s/ \*\*$//'
 
 echo
+echo "== BOM vs footprints =="
+python3 tools/bom_report.py | grep -cE "^  ok " | sed 's/^/  /;s/$/ of 12 named parts have a real MPN whose package fits/'
+python3 tools/bom_report.py | grep "cannot accept" | sed 's/^/  /'
+
+echo
 echo "== physics =="
 # ⚠️ These do not pass or fail: they report. Both currently report a problem
 # the design has not answered, and printing the headline here is the only thing

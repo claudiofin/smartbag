@@ -127,8 +127,20 @@ def main():
         print("         separated viewpoints the two-island layout exists for;")
         print("       - keep one island only, and accept a single viewpoint.")
         print()
-        print("     This is an architecture decision, not a layout one, and it "
-              "is not taken here.")
+        print("     This is an architecture decision, not a layout one.")
+        print()
+        print("     ⭐ AND THE SILICON HAS ALREADY TAKEN IT. hardware/bom.py went")
+        print("     looking for a 60 GHz transceiver you can buy; the Acconeer "
+              "A121's")
+        print("     datasheet says the antenna is inside the package and 'it is "
+              "not")
+        print("     possible to connect trace antenna'. There is no feed to "
+              "lose 8 dB")
+        print("     in, because a real part is placed where its antenna has to "
+              "be —")
+        print("     which is option one above, arrived at by the parts bin "
+              "rather than")
+        print("     by choice. ANT_A1 and ANT_A2 should not be nets at all.")
     else:
         print(f"  Feed loss {worst:.1f} dB one way — acceptable.")
 

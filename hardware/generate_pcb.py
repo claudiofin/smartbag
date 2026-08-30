@@ -222,6 +222,13 @@ def copper_rect(x, y, w, h, layer, net=0):
             f' (fill solid) (layer "{layer}") (uuid "{uid()}"))')
 
 
+# ⛔ SOLID PAD CONNECTION, NOT THERMAL RELIEF, and DRC found out why. Thermal
+# relief exists so a human with an iron can heat a pad that is tied to a plane;
+# this board is 0.4 mm-pitch QFN and 0.5 mm-pitch BGA and will never be hand
+# soldered. Worse, relief needs a spoke narrower than the pad, and J1's ground
+# fingers are 0.3 mm FFC pads: the spokes could not be drawn at all, so those
+# pads connected to nothing and DRC reported them as unrouted ground — which
+# reads like a routing failure and was a fill setting.
 def ground_zone(layer, name):
     pts = " ".join(f"(xy {CX+x:.4f} {CY+y:.4f})" for x, y in OUTLINE)
     return f'''	(zone
@@ -231,10 +238,10 @@ def ground_zone(layer, name):
 		(uuid "{uid()}")
 		(name "{name}")
 		(hatch edge 0.5)
-		(connect_pads (clearance 0.2))
+		(connect_pads yes (clearance 0.2))
 		(min_thickness 0.2)
 		(filled_areas_thickness no)
-		(fill (thermal_gap 0.3) (thermal_bridge_width 0.4))
+		(fill (thermal_gap 0.3) (thermal_bridge_width 0.25))
 		(polygon (pts {pts}))
 	)'''
 
