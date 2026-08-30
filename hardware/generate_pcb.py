@@ -22,6 +22,7 @@ import uuid as _uuid
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import netlist as nl          # noqa: E402
+import route as rt            # noqa: E402
 OUT = os.path.join(HERE, "smartbag_core.kicad_pcb")
 
 
@@ -302,23 +303,23 @@ def _clear(x, y, boxes):
     return not any(a <= x <= b and c <= y <= d for a, b, c, d in boxes)
 
 
+def _segment(a, b, width, layer, net):
+    return (f'\t(segment (start {CX+a[0]:.4f} {CY+a[1]:.4f})'
+            f' (end {CX+b[0]:.4f} {CY+b[1]:.4f}) (width {width})'
+            f' (layer "{layer}") (net {net}) (uuid "{uid()}"))')
+
+
+def _via_at(x, y, net):
+    return via(x, y, net)
+
+
 def route(net_index):
-    """Copper the netlist implies. Ground stitching only, for now.
-
-    ⛔ THE SIGNAL NETS ARE NOT ROUTED. DRC reports 80 unconnected pads and that
-    number is honest: laying out a 0.4 mm-pitch QFN fan-out, a 22-line bus and
-    two 60 GHz microstrip feeds is a real routing job, not something to fake
-    with decorative polylines — which is exactly what used to be here.
-
-    ⭐ What IS generated is the ground stitching. Without it the pour on B.Cu
-    breaks into islands that no via connects, which DRC correctly calls isolated
-    copper, and which on a flex board is also a real antenna.
-    """
+    """Ground stitching plus the signal routing from route.py."""
     out = []
     gnd = net_index["GND"]
     boxes = _keepouts()
     for x in range(-46, 48, 4):
-        for y in (-8.6, 8.6):
+        for y in (-9.3, 9.3):
             if _clear(x, y, boxes):
                 out.append(via(x, y, gnd))
     for x in range(-76, -48, 3):
@@ -329,6 +330,9 @@ def route(net_index):
         out += [via(x, -7.6, gnd), via(x, 7.6, gnd)]
     for x in range(82, 98, 4):
         out += [via(x, -7.6, gnd), via(x, 7.6, gnd)]
+
+    out += rt.route(nl.PARTS, FP_LIB, net_index, _segment, _via_at,
+                    lambda x, y: _clear(x, y, boxes))
     return out
 
 
@@ -337,7 +341,8 @@ def build():
          '\t(generator_version "10.0")',
          '\t(general (thickness 0.6) (legacy_teardrops no))',
          '\t(paper "A3")', '\t(layers',
-         '\t\t(0 "F.Cu" signal)', '\t\t(2 "B.Cu" signal)',
+         '\t\t(0 "F.Cu" signal)', '\t\t(4 "In1.Cu" signal)',
+         '\t\t(6 "In2.Cu" signal)', '\t\t(2 "B.Cu" signal)',
          '\t\t(9 "F.Adhes" user "F.Adhesive")', '\t\t(11 "B.Adhes" user "B.Adhesive")',
          '\t\t(13 "F.Paste" user)', '\t\t(15 "B.Paste" user)',
          '\t\t(5 "F.SilkS" user "F.Silkscreen")', '\t\t(7 "B.SilkS" user "B.Silkscreen")',
@@ -360,8 +365,24 @@ def build():
         x2, y2 = OUTLINE[(i + 1) % len(OUTLINE)]
         r.append(line(x1, y1, x2, y2, "Edge.Cuts", 0.1))
 
-    # ground pours on both layers
+    # ⛔ FOUR LAYERS, AND TWO INDEPENDENT REASONS FOR IT.
+    #
+    # 1. Routing. Two layers could not carry this. Everything connected, but
+    #    DRC came back with 116 crossings and 165 clearance violations: with one
+    #    signal layer the horizontal lanes and the vertical drops share it and
+    #    must cross. Four layers give one axis each — verticals on B.Cu,
+    #    horizontals on In2.Cu — and crossings become impossible by
+    #    construction rather than by luck.
+    #
+    # 2. RF. The patch needs its reference plane 0.25 mm below it (see rf/).
+    #    On a two-layer board that plane is the bottom of a 0.6 mm stack, which
+    #    is the geometry the simulation rejected. In1.Cu, poured solid, IS that
+    #    reference plane, and the antenna islands keep it 0.25 mm away.
+    #
+    # ⚠️ In1.Cu is poured and never routed on. A signal crossing the reference
+    # plane under a 60 GHz microstrip would undo the thing it is there for.
     r.append(ground_zone("F.Cu", "GND_top"))
+    r.append(ground_zone("In1.Cu", "GND_reference"))
     r.append(ground_zone("B.Cu", "GND_bottom"))
 
     # radar arrays on the end islands

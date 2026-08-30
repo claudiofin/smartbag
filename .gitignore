@@ -25,7 +25,14 @@ fp-info-cache
 ml/dataset/
 
 # ── Firmware build output ───────────────────────────────────────────────────
+# ⚠️ app/vectors.json is NOT ignored, although it is generated. It is the golden
+# payload set the phone-side tests run against, and committing it means a
+# contributor with no C toolchain can still run app/test_protocol.mjs and see
+# whether the two halves agree. `make -C firmware vectors` regenerates it.
 firmware/test_smartbag
+firmware/test_sb_fsr
+firmware/test_sb_ble
+firmware/gen_vectors
 *.o
 
 # ── Blender / CAD scratch ───────────────────────────────────────────────────
@@ -41,6 +48,7 @@ __pycache__/
 *.pyc
 .vscode/
 .idea/
+.claude/
 .DS_Store
 
 # ── RF ──────────────────────────────────────────────────────────────────────

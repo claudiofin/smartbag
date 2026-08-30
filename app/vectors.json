@@ -1,0 +1,13 @@
+{
+  "inventory_two": { "note": "a wallet and a set of keys", "hex": "01020200000007000001010000000900000103000000" },
+  "inventory_full": { "note": "24 objects, 198 bytes, needs a negotiated MTU", "hex": "0118180000006400000101000000650000010300000066000001040000006700000106000000680000010800000069000001090000006a0000010b0000006b0000010c0000006c0000010e0000006d000001100000006e000001110000006f000001130000007000000114000000710000011600000072000001180000007300000119000000740000011b000000750000011c000000760000011e0000007700000120000000780000012100000079000001230000007a000001240000007b00000126000000" },
+  "position_mixed": { "note": "object 7 placed; object 9 known only to a compartment", "hex": "01023f3c0000000700be00270002c80900008000800028" },
+  "position_never_measured": { "note": "staleness 255: the device has never measured", "hex": "0102ffffffffff07000080008002c80900008000800028" },
+  "event_object_in": { "note": "the live path, small enough for an unnegotiated link", "hex": "03070040e20100" },
+  "event_low_battery": { "note": "no object id", "hex": "060000583e0f00" },
+  "device_info": { "note": "battery 74%, firmware 1.3, no taxel faults", "hex": "014a0301100e000000030d00" },
+  "enroll_ready": { "note": "device allocated id 500", "hex": "0100f401" },
+  "enroll_committed": { "note": "8 usable samples", "hex": "0308f401" },
+  "enroll_too_similar": { "note": "not separable from object 42", "hex": "04032a00" },
+  "enroll_too_dark": { "note": "mostly unusable frames", "hex": "04010000" }
+}

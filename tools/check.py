@@ -16,6 +16,7 @@ Usage:  python3 tools/check.py
 """
 import ast
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -207,6 +208,31 @@ check("no two courtyards overlap", not overlap, str(overlap))
 outside = [r for r, x0, x1, y0, y1 in boxes
            if x0 < -48 or x1 > 48 or y0 < -10 or y1 > 10]
 check("every part sits on the rigid island", not outside, str(outside))
+
+print("\n── the firmware agrees with the model")
+# ⛔ The taxel grid exists in three places — dimensions.py, the FFC pinout in
+# netlist.py, and #defines in the C. Nothing links them, so nothing stops one of
+# them drifting, and a driver that scans 16 columns of a 12-column matrix reads
+# garbage from four of them without ever erroring.
+_fsr_h = open(os.path.join(ROOT, "firmware", "sb_fsr.h")).read()
+
+
+def _cdefine(name):
+    m = re.search(r"#define\s+%s\s+(\d+)" % name, _fsr_h)
+    return int(m.group(1)) if m else None
+
+
+check("firmware SB_FSR_COLS matches dimensions.py",
+      _cdefine("SB_FSR_COLS") == d.FSR_COLS,
+      f"C {_cdefine('SB_FSR_COLS')} vs dimensions {d.FSR_COLS}")
+check("firmware SB_FSR_ROWS matches dimensions.py",
+      _cdefine("SB_FSR_ROWS") == d.FSR_ROWS,
+      f"C {_cdefine('SB_FSR_ROWS')} vs dimensions {d.FSR_ROWS}")
+_ways = 1 + d.FSR_COLS + d.FSR_ROWS
+check("the FFC has a way for every line plus a ground",
+      _ways <= d.FSR_FFC_WAYS,
+      f"{d.FSR_COLS} cols + {d.FSR_ROWS} rows + GND = {_ways} "
+      f"into a {d.FSR_FFC_WAYS}-way connector")
 
 print("\n── the film agrees with the model")
 # ⛔ The bug the video showed: the dropped object landed at x = 44, on top of

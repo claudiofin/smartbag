@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SmartBag</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>SmartBag</h1>
+  <div class="actions">
+    <button id="connect">Connect an insert</button>
+    <button id="add-sim" class="ghost">Add a simulated insert</button>
+  </div>
+</header>
+
+<p id="banner" class="banner" hidden></p>
+
+<nav id="inserts" class="inserts"></nav>
+
+<main id="main" hidden>
+  <section class="panel" id="status-panel">
+    <h2>Insert</h2>
+    <dl id="status"></dl>
+  </section>
+
+  <section class="panel">
+    <h2>Inside <span id="count" class="tag"></span></h2>
+    <ul id="inventory" class="inventory"></ul>
+  </section>
+
+  <section class="panel">
+    <h2>Where</h2>
+    <p id="map-age" class="age"></p>
+    <div id="map-wrap"></div>
+    <p class="caption" id="map-caption"></p>
+  </section>
+
+  <section class="panel">
+    <h2>Enrol an object</h2>
+    <form id="enrol">
+      <input id="enrol-label" type="text" maxlength="24" placeholder="what is it?" required>
+      <select id="enrol-class">
+        <option value="1">wallet</option><option value="2">phone</option>
+        <option value="3">keys</option><option value="4">pouch</option>
+        <option value="5">cosmetic</option><option value="6">glasses</option>
+        <option value="7">earbuds</option><option value="8">card</option>
+      </select>
+      <button type="submit">Start</button>
+    </form>
+    <p id="enrol-status" class="enrol-status"></p>
+  </section>
+
+  <section class="panel">
+    <h2>What the insert is doing</h2>
+    <ul id="log" class="log"></ul>
+    <div class="actions sim-only">
+      <button id="sim-insert" class="ghost">Put something in</button>
+      <button id="sim-walk" class="ghost">Walk for 30 s</button>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>Every payload on this page was decoded by <code>protocol.js</code> from the
+  same bytes <code>firmware/sb_ble.c</code> produces — including the simulated
+  ones. There is no second data path.</p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

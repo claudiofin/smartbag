@@ -24,13 +24,14 @@ been built.
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
 | board | matches the schematic. **DRC: 0 violations, 0 footprint errors.** |
-| routing | **not done.** DRC also reports **80 unconnected pads**, and that number is the honest measure of what is left. |
+| routing | **not done**, after three attempts that are documented rather than deleted. DRC reports **80 unconnected pads**, and that number is the honest measure of what is left — see [Routing](#routing-and-why-it-is-not-done). |
 | part numbers | component *classes* (`SoC+NPU`, `mmWave 60GHz TRX`), not chosen MPNs. Nothing priced, nothing checked for availability. |
-| firmware | the **wake-up chain and the ledger exist and are tested** (28 assertions, `-Werror`). No drivers, no RTOS, no BLE stack. |
+| firmware | the wake-up chain, the ledger, **the taxel driver and the GATT layer** exist and are tested — **405 assertions**, `-Werror`. No RTOS, no vendor BLE stack. |
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). Trained on synthetic renders, so read it as a test of the method, not of the product. |
-| app | **specified, not written** — [docs/app-and-ble.md](docs/app-and-ble.md). |
-| RF | the 60 GHz element is **simulated full-wave** (openEMS FDTD) and the result **changed the design** — see [RF](#rf). |
-| thermal, power | no thermal analysis, no measured power budget. |
+| app | **written and running** — [`app/`](app/), tested against the firmware's own bytes. No native build; it is a web app. |
+| RF | the element is **simulated full-wave** and the result changed the design. The **feed** is then closed-form, and it says the two-island architecture does not work — see [RF](#rf). |
+| thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). Sensing is thermally free; **charging is not** — see [Thermal](#thermal). |
+| the taxel front end | ⛔ **the board cannot read its own matrix unambiguously.** Measured, not asserted — see [The taxel matrix](#the-taxel-matrix). |
 
 Run everything that can be checked:
 
@@ -40,10 +41,17 @@ Run everything that can be checked:
 
 ```
 == design constraints ==   all constraints hold
-== firmware ==             ok  28 checks, 0 failures
+== firmware ==             28 + 324 + 53 checks, 0 failures
+== protocol ==             15 tests passed
 == ERC ==                  0 violations
 == DRC ==                  0 violations · 80 unconnected pads · 0 footprint errors
+== physics ==              ⛔ 8 dB of feed loss makes this architecture unbuildable as drawn.
+                           ⛔ Charging as specified puts the cell over its limit.
 ```
+
+⚠️ The last two lines are printed on every run **on purpose**. They are the two
+findings this project produced that nobody has answered yet, and a check suite
+that only printed its passes would be helping to forget them.
 
 ## What it is
 
@@ -256,6 +264,146 @@ turns ninety wasted seconds into one line of output.
 python3 rf/patch_sim.py --sweep
 ```
 
+### And then the feed, which is worse
+
+Fixing the element fixed the element. [`rf/feed_loss.py`](rf/feed_loss.py) asks
+the next question — what does it cost to *reach* it — and the answer ends the
+architecture.
+
+The transceiver sits in the middle of a 196 mm board. The two antenna islands
+are at the ends, 87 mm and 99 mm away. On the 0.25 mm substrate a 50 Ω line is
+0.58 mm wide, and at 60 GHz it loses:
+
+| | |
+|---|---|
+| dielectric | 0.64 dB/cm |
+| conductor, roughened | 0.31 dB/cm |
+| **total** | **0.94 dB/cm** |
+| over 88 mm | **8.2 dB one way, 16.5 dB there and back** |
+
+⛔ **A radar link budget goes as the fourth power of range.** 16.5 dB round trip
+is a factor of 2.6 in range thrown away before the antenna has radiated
+anything — on a sensor whose entire job is to see through 78 mm of handbag.
+
+⭐ **This is not a routing problem and no layout fixes it.** The distance is the
+floorplan, and the floorplan is the product: the two islands are at the ends
+*because* two separated viewpoints are what makes the map work. Three ways out,
+all of them architectural:
+
+- a transceiver **on each island**, with a low IF and a reference clock
+  distributed down the flex instead of 60 GHz;
+- both antennas **next to the transceiver**, giving up the two viewpoints;
+- **one island**, and a single viewpoint.
+
+⚠️ None of the three is chosen here. Choosing costs a redesign of the board, and
+guessing which one would be inventing a decision rather than reporting a
+measurement. The number is what this repo has to offer.
+
+```bash
+python3 rf/feed_loss.py
+```
+
+## Routing, and why it is not done
+
+Three attempts, all rejected by DRC, all measured:
+
+| attempt | violations | what it established |
+|---|---|---|
+| two layers: escapes on F.Cu, lanes on B.Cu | **466** | everything connected, but one signal layer means the horizontal lanes and the vertical drops share it and must cross: 116 crossings, 165 clearance. |
+| four layers, one axis each | **989** | worse. Escape stubs have to fan sideways to give twelve pads in a QFN column twelve escape columns, and sideways is where the other parts are. |
+| four layers, via-in-pad, a column per pad | **852** | the jogs from via to column run at the pad's own y, and every QFN row shares a y. |
+
+⭐ What that bought, which is worth more than a bad layout: at 0.4 mm pitch
+**via-in-pad is not optional**; **two layers cannot carry this board**, measured
+rather than assumed; and what is missing is not a bigger board or a cleverer
+floorplan but **a maze router with rip-up and retry**, which is a project of its
+own. The board is 4-layer now (F.Cu · In1.Cu ground reference · In2.Cu · B.Cu)
+and unrouted.
+
+⚠️ Decorative tracks that made the renders look like a circuit were deleted once
+already, after DRC read them for what they were. They are not coming back as a
+substitute for routing. 80 unconnected pads is the true number and it stays on
+the front page.
+
+## Thermal
+
+[`thermal/budget.py`](thermal/budget.py). **The interesting case is not the one
+you expect.**
+
+A 60 GHz ping and an NPU inference sound like the thermal problem. They are not:
+0.15 s, forty times a day.
+
+| | |
+|---|---|
+| every sensing load, averaged | **0.18 mW** |
+| whole-bag rise from it | **+0.000 K** |
+| worst burst, adiabatic, package only | **+5 K**, gone in seconds |
+
+⛔ **Charging is the thermal problem.** 5 W in at 80% is a watt of loss for two
+hours, inside a closed bag, with the Qi coil directly under the lithium cell —
+and the insert wall between it and the outside world is soft microfibre over
+foam, which is to say an insulator, chosen for exactly the reason it is bad here.
+
+| | |
+|---|---|
+| wall, 3 mm of k = 0.05 | 11 K/W |
+| surface | 23 K/W |
+| **cell temperature** | **≈ 60 °C**, against a 45 °C charging limit |
+
+Two independent routes — a conduction path and a lumped convection area — land
+within a kelvin of each other, which is the only reason the number is worth
+quoting.
+
+⭐ **Inverting the model gives the fix rather than just the complaint:** 15 K of
+headroom less 5 K of margin allows 433 mW of loss, so **2.2 W in, not 5** — 2.3×
+slower, about five hours for a full charge. Cheaper still, and free: the firmware
+already knows when the bag is open, so charge only then.
+
+⚠️ Neither is implemented. There is no charge control in the firmware and no cell
+thermistor on the board.
+
+```bash
+python3 thermal/budget.py
+```
+
+## The taxel matrix
+
+96 sensors on 22 wires and **not one diode** — that is what makes the matrix
+affordable, and it is also a circuit in which current does not stay where you
+put it.
+
+[`firmware/test_sb_fsr.c`](firmware/test_sb_fsr.c) does not mock the hardware. It
+builds the nodal admittance matrix of the real thing — 16 columns, 6 rows, 96
+resistors, a sense resistor per row — and solves it. Press three taxels in an L:
+
+| scan mode | the phantom taxel | a real taxel |
+|---|---|---|
+| unselected columns floating | **112 µS — 39% of a real press** | 289 µS |
+| unselected columns grounded | 0 µS | **83 µS instead of 500 — 83% low** |
+| rows at virtual ground (TIA) | 0 µS | **500 µS, exact** |
+
+⛔ **Neither mode the board can actually run is usable.** Floating columns
+manufacture objects that are not there — three contacts create a fourth, the
+same sneak path that makes cheap keyboards register phantom keys, and a bag full
+of objects is exactly the many-simultaneous-contacts case that provokes it.
+Grounding the columns kills the phantom and then puts them in parallel with the
+sense resistor, so every real taxel reads six times light whenever anything else
+in its row is loaded.
+
+⭐ **The third row is the control case, and it is what makes the other two mean
+something:** the matrix is not inherently unreadable. Hold the rows at virtual
+ground and every non-selected taxel has zero volts across it, carries nothing,
+and the reading is exactly the selected taxel. That costs six op-amps, or one
+plus an analog mux. Neither is in `hardware/netlist.py`.
+
+⚠️ Selecting `SB_FSR_SCAN_TIA` in firmware on the board as drawn changes the
+drive pattern and nothing else. This is a hardware gap, stated as one.
+
+The same tests found an ordinary bug the interesting one would have hidden: blob
+centroids were stored as `int16_t` micrometres, which saturates at 32.8 mm on a
+225 mm insert. Every object in the outer two thirds of the bag reported the same
+position, and it read as plausible because 32 mm is a real place.
+
 ## Firmware
 
 [`firmware/`](firmware/) is the wake-up chain, the inventory ledger and the
@@ -281,6 +429,72 @@ find on hardware:
 ```bash
 make -C firmware test
 ```
+
+### The GATT layer
+
+[`firmware/sb_ble.c`](firmware/sb_ble.c) is the byte layout of every
+characteristic in [docs/app-and-ble.md](docs/app-and-ble.md), the enrollment
+handshake, and three rules that are enforced rather than documented:
+
+- **a position with low confidence carries no coordinates.** The compartment
+  still goes out — "the right-hand third" is a true statement — but `x` and `y`
+  are the sentinel, so the app physically cannot draw a dot. A confident dot in
+  the wrong place is worse than no dot.
+- **a map that was never measured places nothing at all**, whatever the
+  per-object confidence says. ⛔ This one was found by *reading a golden vector*,
+  not by a test: staleness is per map and confidence is per entry, and the first
+  version happily emitted 190 mm from a measurement that never happened.
+- ⛔ **the inventory does not fit in a notification.** 24 objects is **198 bytes**
+  against the **20** a default ATT MTU leaves, and BLE does not fragment
+  notifications — it silently delivers the first 20, which decodes as a bag
+  holding one object out of twenty-four. `sb_ble_fits()` exists so that this
+  fails at test time. Events are 7 bytes, which is why the live path is events.
+
+There is no link layer, no L2CAP, no security manager and no vendor SDK. Bind
+these buffers to whatever NimBLE or a SoftDevice calls a notify.
+
+## The app
+
+[`app/`](app/) is a working companion app: inventory, the position map,
+enrollment, several inserts, a live event log.
+
+⛔ **The trap it avoids.** The obvious way to build an app before the hardware
+exists is to feed the UI plain objects — `{id: 7, x: 190}` — and it is a trap,
+because then the UI is developed against data the device can never send. It will
+look finished and break on first contact. So the simulated insert encodes **real
+payloads, byte for byte**, and the app decodes them with the same `protocol.js`
+it would use over BLE. There is exactly one code path.
+
+⭐ **And the two halves are pinned to each other.** `firmware/gen_vectors.c`
+links the same `sb_ble.c` the device would run and writes `app/vectors.json`;
+`app/test_protocol.mjs` decodes those exact bytes and then re-encodes them with
+the simulator's own writer and asserts the hex is identical. Change a field
+width, an order or a sentinel on either side and a test goes red instead of a
+phone quietly rendering the wrong object's position.
+
+The three UI rules from the spec, and where they live:
+
+| rule | where |
+|---|---|
+| **show age, everywhere** | the position panel prints how old the measurement is *above* the map, so it cannot be scrolled past — and it says *shaken*, not just *ago*: a bag that sat on a table for an hour has a better map than one carried for four minutes. |
+| **degrade to compartments** | an object the device declined to place is not dropped and not guessed at. Its third of the insert fills in and the object is named inside it. After any walk this is the normal state, so it is drawn as a first-class answer rather than an error. |
+| **several inserts, never merged** | a list, one shown at a time. There is deliberately no combined view: nothing in the system knows what is in the bag you are not carrying. |
+
+The refusal path is the one worth looking at. Enrol a second wallet and the
+insert answers **"the insert cannot tell this apart from *brown wallet*"** — with
+the conflicting object's id in the payload, because *"too similar to something"*
+is not an instruction anyone can act on.
+
+```bash
+python3 -m http.server 8791 --directory app
+node app/test_protocol.mjs
+```
+
+⚠️ It is a web app, so it needs Web Bluetooth for a real insert — Chrome and Edge
+have it, Safari and Firefox do not. The simulated insert works everywhere. The
+service UUIDs are obvious placeholders; a vendor-assigned 128-bit UUID is a real
+allocation and inventing one that collides with a shipped product would be worse
+than leaving it fake.
 
 ## Recognition
 
@@ -432,7 +646,7 @@ with its own inventory.
 ```
 dimensions.py                every shared dimension, in one file
 tools/check.py               asserts the constraints the renders discovered
-tools/verify.sh              checks + firmware tests + ERC + DRC, one command
+tools/verify.sh              checks + firmware + protocol + ERC + DRC + physics
 hardware/netlist.py          pins, nets and part classes: one source
 hardware/generate_schematic.py  symbols, schematic, project file
 hardware/generate_pcb.py     generates the KiCad board (s-expressions)
@@ -444,9 +658,19 @@ render/build_video.py        assembly, captions, fades, ffmpeg
 tools/pipeline.sh            the full chain (stills)
 tools/render_animation.sh    the film frames
 tools/render_pcb.sh          board renders only
-docs/app-and-ble.md          the companion app and the BLE contract (spec only)
+docs/app-and-ble.md          the BLE contract, and the reasoning behind it
 firmware/smartbag.[ch]       wake-up chain, ledger, staleness rule (portable C)
-firmware/test_smartbag.c     28 host assertions
+firmware/sb_fsr.[ch]         the taxel matrix: scanning it, and what goes wrong
+firmware/sb_ble.[ch]         GATT payloads, enrollment, the suppression rules
+firmware/test_*.c            405 host assertions, one of them a circuit solver
+firmware/gen_vectors.c       golden payloads -> app/vectors.json
+app/protocol.js              the phone-side decoder, pinned to the firmware
+app/sim.js                   a simulated insert that encodes real bytes
+app/app.js, index.html       the companion app
+app/test_protocol.mjs        JS decoder vs C encoder, on the same bytes
+rf/patch_sim.py              openEMS FDTD of one 60 GHz patch
+rf/feed_loss.py              what it costs to reach it from 90 mm away
+thermal/budget.py            duty cycle, bursts, and the charging case
 ml/render_dataset.py         training images through the collar's real optics
 ml/classify.py               embedding, enrolment, measurement
 ```
@@ -463,6 +687,9 @@ committed so the repo is useful without running anything.
 - **ffmpeg**
 - **PyTorch** and **NumPy**, for `ml/` only
 - a **C compiler**, for `firmware/` only
+- **Node 18+**, for `app/test_protocol.mjs` only
+- **openEMS/CSXCAD**, for `rf/patch_sim.py` only — everything else in `rf/` and
+  all of `thermal/` is plain python3
 
 The KiCad footprint library and the caption fonts are looked up across the usual
 macOS / Linux / Windows locations, and can be overridden with
@@ -484,6 +711,19 @@ macOS / Linux / Windows locations, and can be overridden with
   0.1 m. The dataset camera works at 5–20 cm, so most of every subject was in
   front of the near plane and simply not rendered. It looked exactly like a
   lighting problem, and was chased as one for three attempts.
+
+### BLE, and a passive matrix
+
+- **A BLE notification is not a stream.** At the default 23-byte ATT MTU the
+  payload is 20 bytes and there is no fragmentation: a 198-byte inventory is
+  delivered as its first 20 bytes, silently, and decodes as a valid inventory of
+  one object. Nothing errors. The only defence is to check the length against
+  the MTU before trusting a notification at all.
+- **A resistive matrix without diodes ghosts, and the fix has its own cost.**
+  Floating the unselected columns manufactures phantom taxels; grounding them
+  removes the phantoms and puts a 2 kΩ shunt across the sense resistor. Both are
+  wrong in different directions, and neither shows up until several taxels are
+  loaded at once — which on a bench, with one finger, never happens.
 
 ### KiCad 10
 

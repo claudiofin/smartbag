@@ -1,13 +1,19 @@
 # The companion app, and the BLE contract it talks to
 
-**Nothing in this document is implemented.** It is the specification of the half
-of the product that this repo does not contain: the phone side, and the
-interface between the two.
+**This document is now implemented on both sides.** The device side is
+[`firmware/sb_ble.c`](../firmware/sb_ble.c); the phone side is
+[`app/`](../app/). What follows is still the specification — it is the reason
+each field exists, which the code cannot tell you — and it is now also checked:
+`firmware/gen_vectors.c` writes golden payloads and `app/test_protocol.mjs`
+decodes those exact bytes, so the two halves cannot drift apart quietly.
 
-It is here because the repo was describing a device that has no way to tell
-anyone what it knows. An insert that recognises its contents and cannot report
-them is not half a product, it is no product — and the interface is the part
-worth pinning down early, because it is where the two halves have to agree.
+It was written first because the repo was describing a device that had no way to
+tell anyone what it knew. An insert that recognises its contents and cannot
+report them is not half a product, it is no product — and the interface is the
+part worth pinning down early, because it is where the two halves have to agree.
+
+⚠️ Still not implemented, and listed at the end: pairing, bonding, encryption,
+OTA, and anything to do with an account.
 
 ---
 
@@ -142,7 +148,30 @@ enrollment time**, not silently accept it and then confuse the two forever.
 
 ### `DeviceInfo` — read
 
-Battery, uptime, firmware version, taxel self-test result, name.
+```
+uint8   version
+uint8   battery_pct
+uint16  firmware            major << 8 | minor
+uint32  uptime              seconds
+uint8   taxel_faults        taxels failing self-test, 0..96
+uint8   state               the wake-up chain state, for diagnostics
+uint16  energy_uah          charge spent since boot
+```
+
+### ⛔ The size limit that decides the transport
+
+A full inventory is `6 + 24 × 8` = **198 bytes**. The default ATT MTU is 23,
+which leaves **20**, and BLE does **not** fragment notifications — it delivers
+the first 20 bytes and reports success. Those 20 bytes are a structurally valid
+inventory containing one object.
+
+So: either the phone negotiates an MTU of at least 201, or the app must **read**
+`Inventory` rather than rely on the notification. `sb_ble_fits()` on the device
+and `fitsNotification()` in the app both exist to make this a loud failure
+instead of a quiet one.
+
+⭐ `Event` is 7 bytes on purpose. The live path has to work on a link that
+negotiated nothing.
 
 ---
 
