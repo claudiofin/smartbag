@@ -73,6 +73,12 @@ CHARGE_HOURS = 2.2
 CELL_LIMIT_C = 45.0               # standard Li-ion charge ceiling
 MARGIN_K = 5.0                    # nobody designs to the limit itself
 
+# ⚠️ Mirrored in firmware/sb_power.h, and tools/check.py asserts the two agree.
+# A safety limit written down twice is a limit that will eventually be written
+# down differently.
+SB_JEITA_COOL = 10.0
+SB_JEITA_WARM = 40.0
+
 # The path from the coil face to open air. ⚠️ Two of these are properties of the
 # insert as designed, and they are the reason the answer comes out badly: the
 # wall is soft microfibre over foam, which is a thermal insulator, and it is
@@ -191,17 +197,29 @@ def main():
               "loop,")
         print("          which is what a shipping product would do anyway.")
         print()
-        print("      ⭐ THE BOARD NOW HAS THE MEANS. RT1 is a 10k NTC on the "
-              "cell and")
-        print("      U3 is an nPM1300, which reads it and applies the JEITA "
-              "profile in")
-        print("      hardware — this analysis is why both are there. What is "
-              "still")
-        print("      missing is the POLICY: nothing has told the PMIC what "
-              "ceiling to")
-        print("      hold, and the firmware has no charge control at all.")
-        print("      ⚠️ So the number above is what happens if nobody "
-              "configures it.")
+        print("      ✅ ALL THREE ARE NOW IMPLEMENTED, which is why this "
+              "section still")
+        print("      prints a number that no longer happens. RT1 is a 10k NTC "
+              "on the")
+        print("      cell and U3 is an nPM1300 that reads it — this analysis "
+              "is why")
+        print("      both are on the board — and firmware/sb_power.c holds the "
+              "policy:")
+        print("      full current only with the bag OPEN and the cell between "
+              f"{SB_JEITA_COOL:.0f} and")
+        print(f"      {SB_JEITA_WARM:.0f} C, {safe_in:.1f} W otherwise, and "
+              "nothing at all if the")
+        print("      thermistor has come off. 264 host assertions, including a "
+              "sweep")
+        print("      over every cell temperature with the bag shut.")
+        print()
+        print("      ⚠️ The figure above is what the hardware does UNCONFIGURED, "
+              "and it")
+        print("      is kept because that is still true on the first boot "
+              "before")
+        print("      anything writes to the PMIC. A limit is only real once "
+              "somebody")
+        print("      has set it.")
     else:
         print(f"   Cell stays at {cell_temp:.0f} C, inside its window.")
 

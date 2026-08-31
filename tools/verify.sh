@@ -66,4 +66,4 @@ echo "== physics =="
 # the design has not answered, and printing the headline here is the only thing
 # stopping it being quietly forgotten.
 python3 rf/feed_loss.py | grep -E "✅ SETTLED|^  ⛔" | tail -1
-python3 thermal/budget.py | grep -E "⛔|Cell stays" | head -1
+python3 thermal/budget.py | grep -E "✅ ALL THREE|Cell stays" | tail -1

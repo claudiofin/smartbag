@@ -311,6 +311,41 @@ _orphan = sorted(e for e, n in EVENT_SOURCES.items()
 check("every firmware event has hardware that can raise it", not _orphan,
       "; ".join(f"{e} needs {EVENT_SOURCES[e]}" for e in _orphan))
 
+print("\n── the charge policy agrees with the thermal model")
+# ⛔ TWO COPIES OF A SAFETY LIMIT IS ONE COPY TOO MANY. thermal/budget.py
+# computes what a closed bag can dissipate; firmware/sb_power.h enforces it. A
+# constant that drifts away from the analysis that justified it is worse than no
+# constant, because it looks considered. This asserts they are the same number.
+_pw = open(os.path.join(ROOT, "firmware", "sb_power.h")).read()
+
+
+def _cdef(name):
+    m = re.search(r"#define\s+%s\s+(-?\d+)" % name, _pw)
+    return int(m.group(1)) if m else None
+
+
+sys.path.insert(0, os.path.join(ROOT, "thermal"))
+import budget as _th                                            # noqa: E402
+
+_area = _th.bag_surface_m2()
+_coil = 3.141592653589793 * _th.COIL_R_M ** 2
+_r = (_th.WALL_T_M / (_th.WALL_K * _coil * _th.SPREADING)
+      + 1.0 / (8.0 * _coil * _th.SPREADING))
+_head = _th.CELL_LIMIT_C - _th.MARGIN_K - _th.AMBIENT
+_safe_w = (_head / (_r + 1 / (8.0 * _area))) / (1 - _th.QI_EFFICIENCY)
+
+check("the firmware's cell ceiling matches thermal/budget.py",
+      _cdef("SB_CELL_LIMIT_C") == int(_th.CELL_LIMIT_C),
+      f"firmware {_cdef('SB_CELL_LIMIT_C')} vs model {_th.CELL_LIMIT_C}")
+check("the firmware's margin matches thermal/budget.py",
+      _cdef("SB_CELL_MARGIN_K") == int(_th.MARGIN_K),
+      f"firmware {_cdef('SB_CELL_MARGIN_K')} vs model {_th.MARGIN_K}")
+# ⚠️ Rounded to 100 mW: the model is a lumped estimate and pretending its third
+# significant figure is meaningful would be its own kind of dishonesty.
+check("the closed-bag charge ceiling matches what the model allows",
+      abs(_cdef("SB_CHG_SLOW_MW") - _safe_w * 1000) < 100,
+      f"firmware {_cdef('SB_CHG_SLOW_MW')} mW vs model {_safe_w * 1000:.0f} mW")
+
 print("\n── the film agrees with the model")
 # ⛔ The bug the video showed: the dropped object landed at x = 44, on top of
 # the divider, because the shot carried its own copy of the coordinate.
