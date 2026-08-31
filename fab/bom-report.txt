@@ -12,7 +12,7 @@ BOM vs footprints — measured, not asserted
   ok Y1   ABM8-32.000MHZ-B2-T    SMD-2016-4 datasheet   4 pins / 2.0x1.6 mm   footprint   4 pins /   3.0x2.6 mm   [pdf not archived]
   ok Y2   ABM8-24.000MHZ-B2-T    SMD-2016-4 datasheet   4 pins / 2.0x1.6 mm   footprint   4 pins /   3.0x2.6 mm   [pdf not archived]
   ok Y3   ABM8-24.000MHZ-B2-T    SMD-2016-4 datasheet   4 pins / 2.0x1.6 mm   footprint   4 pins /   3.0x2.6 mm   [pdf not archived]
-  ok J1   FH12-10S-0.5SH(55)     FH12-10S   datasheet  10 pins / 9.4x4.3 mm   footprint  10 pins /  11.1x7.9 mm   [pdf not archived]
+  ⛔  J1   FH12-10S-0.5SH(55)     FH12-10S   datasheet  10 pins / 9.4x4.3 mm   footprint  12 pins /  12.1x7.9 mm   [pdf not archived]
   ok J4   FH12-24S-0.5SH(55)     FH12-24S   datasheet  24 pins / 16.4x4.3 mm   footprint  24 pins /  18.1x7.9 mm   [pdf not archived]
   ok J2   SM02B-SRSS-TB(LF)(SN)  JST-SH-02  datasheet   2 pins / 4.25x2.9 mm   footprint   2 pins /   5.8x6.6 mm   [pdf not archived]
   ok J3   SM02B-SRSS-TB(LF)(SN)  JST-SH-02  datasheet   2 pins / 4.25x2.9 mm   footprint   2 pins /   5.8x6.6 mm   [pdf not archived]
@@ -61,6 +61,11 @@ BOM vs footprints — measured, not asserted
      0402           6.8k 1%                x1   R10
      0402           8.2k 1%                x6   R40 R41 R42 R43 R44 R45
      0402           8p NP0                 x4   C24 C25 C34 C35
+
+⛔ 1 parts the board cannot accept as drawn:
+
+   J1: OK. ⚠️ The camera on the other end of it is NOT a chosen part.
+
 ⚠️ 3 things the design needs and the board has not got:
 
    - a camera module

@@ -270,6 +270,23 @@ def ground_zone(layer, name):
 	)'''
 
 
+# ⛔ NO FIDUCIALS MEANT NO ASSEMBLY QUOTE. A placement machine finds the board by
+# looking at fiducials, not by trusting the router rail — and this design has two
+# 50-ball BGAs at 0.5 mm pitch, which is exactly the regime where nobody will
+# take the job without them. The board had none for its whole life, because a
+# fiducial connects to nothing and so appears in no netlist and no ERC.
+#
+# ⭐ THREE GLOBAL, ASYMMETRIC. Three points fix translation, rotation and scale;
+# putting them in an L rather than a line is what lets the machine tell which way
+# round the board is. And two LOCAL fiducials, one beside each A121, because at
+# 0.5 mm pitch the machine wants a reference near the part rather than 90 mm away
+# at the other end of a flex strip that has just been through a reflow oven.
+FIDUCIALS = [
+    (-92.0, -7.5), (92.0, -7.5), (-92.0, 7.5),        # global, in an L
+    (-79.5, 6.5), (79.5, 6.5),                        # local, one per BGA
+]
+
+
 def antenna_keepout(x, y, w=7.0, h=2.2):
     """The copper-free window a chip antenna needs, from its own datasheet.
 

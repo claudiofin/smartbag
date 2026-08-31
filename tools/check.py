@@ -262,6 +262,37 @@ check("the FFC has a way for every line plus a ground",
       f"{d.FSR_COLS} cols + {d.FSR_ROWS} rows + GND = {_ways} "
       f"into a {d.FSR_FFC_WAYS}-way connector")
 
+print("\n── the firmware's events have hardware that can raise them")
+# ⛔ THE CHECK THAT WAS MISSING FOR THE WHOLE PROJECT. firmware/smartbag.h
+# declares the events the wake-up chain runs on, and one of them —
+# SB_EV_TOF_CROSSED, the beam across the mouth breaking — had no sensor anywhere
+# in the netlist. Not a regression: no schematic ever had one. dimensions.py
+# placed it, the films showed it working, the state machine depended on it, and
+# every check passed, because nothing read the two files against each other.
+#
+# ⚠️ This maps each event to a net that must exist. It cannot prove the hardware
+# WORKS; it can prove somebody wired something up, which is the failure that
+# actually happened.
+EVENT_SOURCES = {
+    "SB_EV_CLOSURE_OPENED": "HALL_OUT",
+    "SB_EV_CLOSURE_CLOSED": "HALL_OUT",
+    "SB_EV_TOF_CROSSED": "TOF_INT",
+    "SB_EV_FRAME_READY": "CS_CAM",
+    "SB_EV_CLASSIFIED": "CS_CAM",
+    "SB_EV_MOTION": "IMU_INT1",
+    "SB_EV_STILL": "IMU_INT1",
+}
+_h = open(os.path.join(ROOT, "firmware", "smartbag.h")).read()
+_declared = set(re.findall(r"\b(SB_EV_[A-Z_]+)\b", _h))
+_nets = set(nets)
+_unmapped = sorted(_declared - set(EVENT_SOURCES))
+check("every firmware event is mapped to a source net", not _unmapped,
+      str(_unmapped))
+_orphan = sorted(e for e, n in EVENT_SOURCES.items()
+                 if e in _declared and n not in _nets)
+check("every firmware event has hardware that can raise it", not _orphan,
+      "; ".join(f"{e} needs {EVENT_SOURCES[e]}" for e in _orphan))
+
 print("\n── the film agrees with the model")
 # ⛔ The bug the video showed: the dropped object landed at x = 44, on top of
 # the divider, because the shot carried its own copy of the coordinate.

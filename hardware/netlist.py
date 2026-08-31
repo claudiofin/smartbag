@@ -105,11 +105,11 @@ U1_PINS = [
     (35, "XC2", PASSIVE,   "XTAL32M_2"),
     (36, "VDD", PWR_IN,    "VDD_3V3"),
     (37, "P1.09", OUT,     "IR_LED_EN"),
-    (38, "P1.10", PASSIVE, "SPARE1"),
+    (38, "P1.10", OUT,     "TOF_XSHUT"),
     (39, "P1.11/AIN4", IN, "ADC4"),
     (40, "P1.12/AIN5", IN, "ADC5"),
     (41, "P1.13/AIN6", PASSIVE, "VSYS_SNS"),
-    (42, "P1.14/AIN7", PASSIVE, "SPARE2"),
+    (42, "P1.14/AIN7", IN, "TOF_INT"),
     (43, "DECA", PASSIVE,  "DECA"),
     (44, "VSS", PWR_IN,    "GND"),
     (45, "DECD", PASSIVE,  "DECD"),
@@ -364,17 +364,30 @@ Y3_PINS = [(1, "XI", PASSIVE, "X24R_1"), (2, "GND", PWR_IN, "GND"),
 # ⭐ VDD_CAM IS A SWITCHED RAIL, not the 3.3 V bus. It comes off the nPM1300's
 # load switch, so the camera — 56 to 136 mA whenever it is awake — is off
 # between bursts rather than merely idle.
+# ⛔ TWELVE WAYS, AND THE TWO NEW ONES ARE THE HOLE THIS PROJECT HAD ALL ALONG.
+# The firmware's wake-up chain has always turned on SB_EV_TOF_CROSSED — the beam
+# across the mouth breaking is what arms the camera — dimensions.py has placed a
+# time-of-flight sensor at TOF_X = 48 since the first commit, and the films show
+# it working. No schematic ever contained one. The state machine depended on an
+# event no hardware could generate, and every check passed because none of them
+# reads the firmware's event list against the netlist. tools/check.py does now.
+#
+# ⭐ The sensor lives on the OPTICS FLEX, not here, because it has to look across
+# the opening. What crosses this connector is its I2C, its shutdown and its
+# interrupt.
 J1_PINS = [
-    (1, "GND", PWR_IN, "GND"),
-    (2, "VDD", PWR_IN, "VDD_CAM"),
-    (3, "SCK", PASSIVE, "SPI_SCK"),
-    (4, "MOSI", PASSIVE, "SPI_MOSI"),
-    (5, "MISO", PASSIVE, "SPI_MISO"),
-    (6, "CS", PASSIVE, "CS_CAM"),
-    (7, "GND", PWR_IN, "GND"),
-    (8, "LED+", PWR_IN, "VSYS"),
-    (9, "LED-", PASSIVE, "IR_LED_K"),
-    (10, "GND", PWR_IN, "GND"),
+    (1,  "GND", PWR_IN, "GND"),
+    (2,  "VDD", PWR_IN, "VDD_CAM"),
+    (3,  "SCK", PASSIVE, "SPI_SCK"),
+    (4,  "MOSI", PASSIVE, "SPI_MOSI"),
+    (5,  "MISO", PASSIVE, "SPI_MISO"),
+    (6,  "CS", PASSIVE, "CS_CAM"),
+    (7,  "SDA", PASSIVE, "I2C_SDA"),
+    (8,  "SCL", PASSIVE, "I2C_SCL"),
+    (9,  "XSHUT", PASSIVE, "TOF_XSHUT"),
+    (10, "TOF_INT", PASSIVE, "TOF_INT"),
+    (11, "LED+", PWR_IN, "VSYS"),
+    (12, "LED-", PASSIVE, "IR_LED_K"),
 ]
 
 J4_PINS = ([(1, "GND", PWR_IN, "GND")]
@@ -428,8 +441,8 @@ PARTS = [
      "Crystal_SMD_2016-4Pin_2.0x1.6mm", Y2_PINS, -81.0, -5.5),
     ("Y3", "24 MHz", "XTAL4", "Crystal",
      "Crystal_SMD_2016-4Pin_2.0x1.6mm", Y3_PINS, 81.0, -5.5),
-    ("J1", "FFC optics, 10 way", "FFC_10", "Connector_FFC-FPC",
-     "Hirose_FH12-10S-0.5SH_1x10-1MP_P0.50mm_Horizontal", J1_PINS, -46.0, 6.0),
+    ("J1", "FFC optics, 12 way", "FFC_12", "Connector_FFC-FPC",
+     "Hirose_FH12-12S-0.5SH_1x12-1MP_P0.50mm_Horizontal", J1_PINS, -46.0, 6.0),
     ("J4", "FFC FSR matrix, 24 way", "FFC_24", "Connector_FFC-FPC",
      "Hirose_FH12-24S-0.5SH_1x24-1MP_P0.50mm_Horizontal", J4_PINS, 34.0, -4.5),
     ("J2", "LiPo 3.7V 2000mAh", "CONN2", "Connector_JST",
@@ -438,6 +451,25 @@ PARTS = [
      "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", J3_PINS, 28.0, 6.5),
     ("J5", "SWD debug", "CONN4", "Connector_JST",
      "JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal", J5_PINS, -37.0, 6.0),
+    # ⭐ FIDUCIALS ARE IN THE NETLIST, and that is not pedantry. Put them on the
+    # board only and schematic parity reports five "extra footprint" warnings
+    # forever — correctly, because the board would contain things the schematic
+    # has never heard of. A fiducial with no pins is a part with no nets, which
+    # is exactly what it is.
+    # ⚠️ NO PINS, AND THE FOOTPRINT AGREES. A fiducial's copper target is a pad
+    # with an EMPTY number — `(pad "" smd circle ...)` — because it is not a
+    # connection, it is a thing a camera looks at. So the symbol has no pins
+    # either, and the two match. Giving it a pin numbered 1 produced "no pad
+    # found for pin 1", which is DRC being right twice in a row.
+    #
+    # ⛔ And `in_bom no`, because the footprint carries `exclude_from_bom` and a
+    # symbol that disagrees is a footprint/symbol mismatch. Five parts, two
+    # warnings each, for a checkbox.
+    ("FID1", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -92.0, -7.5),
+    ("FID2", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], 92.0, -7.5),
+    ("FID3", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -92.0, 7.5),
+    ("FID4", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -79.5, 6.5),
+    ("FID5", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], 79.5, 6.5),
     ("AE1", "2450AT43F0100E", "ANTENNA", "RF_Antenna",
      "Johanson_2450AT43F0100_2400-2500Mhz", AE1_PINS, -42.0, 0.0),
 ]
@@ -645,7 +677,11 @@ POWER_FLAGS = ["GND"]
 # ⚠️ Nets that legitimately reach one pin. The op-amp spares are unused channels
 # whose inputs the datasheet wants tied, and they are named rather than shorted
 # so nobody later mistakes them for a mistake.
-SINGLE_PIN_NETS = ["SPARE1", "SPARE2", "VSYS_SNS", "IMU_INT2", "ANT_NC"]
+SINGLE_PIN_NETS = ["VSYS_SNS", "IMU_INT2", "ANT_NC"]
+
+# ⚠️ Parts that carry no netlist at all — the schematic must mark them out of the
+# bill of materials to match their footprints.
+NOT_IN_BOM = {"FID1", "FID2", "FID3", "FID4", "FID5"}
 
 
 def nets():

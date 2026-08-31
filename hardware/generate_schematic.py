@@ -148,7 +148,7 @@ def place_part(ref, value, sym, lib, fp, pins, x, y):
     half_h = (rows - 1) * PITCH / 2 + PITCH
     half_w = 8 * G
     out = [f'''\t(symbol (lib_id "smartbag:{sym}") (at {x:.2f} {y:.2f} 0) (unit 1)
-\t\t(exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+\t\t(exclude_from_sim no) (in_bom {"no" if ref in nl.NOT_IN_BOM else "yes"}) (on_board yes) (dnp no)
 \t\t(uuid "{uid()}")
 \t\t(property "Reference" "{ref}" (at {x:.2f} {y - half_h - PITCH:.2f} 0)
 \t\t\t(effects (font (size 1.27 1.27))))
