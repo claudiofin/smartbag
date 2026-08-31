@@ -77,7 +77,10 @@ FILMS = {
              "3.5 mm leather · removable insert, 225 × 78 × 180 mm"),
             (136, 200, "five layers",
              "collar · walls · FSR floor · power plate · Qi coil"),
-            (220, 278, "the board", "196 × 20 mm strip · 2-layer rigid-flex"),
+            # ⚠️ Four layers, not two. This caption was written when the board
+            # was, and stayed behind when In1.Cu became a solid ground reference
+            # and In2.Cu took most of the routing.
+            (220, 278, "the board", "196 × 20 mm strip · 4-layer rigid-flex"),
             (300, 358, "96 taxels", "the contents leave their imprint on the floor"),
             (378, 422, "two 60 GHz arrays",
              "2×4 patches, λ₀/2 pitch · no tags on the objects"),
