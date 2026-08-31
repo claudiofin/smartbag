@@ -78,17 +78,38 @@ U1_PINS = [
     (8,  "P1.07/AIN3", IN, "ADC3"),
     (9,  "P1.08", OUT,     "MUX_S2"),
     (10, "VDD", PWR_IN,    "VDD_3V3"),
-    (11, "P2.00", OUT,     "MUX_S3"),
+    # ⛔ WHICH GPIO CARRIES WHICH SIGNAL IS A LAYOUT DECISION, and getting it
+    # wrong is invisible until the router gives up. Pin 11 is on the package's
+    # WEST edge and used to carry MUX_S3, whose only destination is 71 mm to the
+    # EAST — so that net began by crossing the whole processor. Freerouting left
+    # eight of this block's pins unrouted, and every one of them was a signal
+    # pointed the wrong way.
+    #
+    # ⭐ These are now ordered BY DESTINATION: westbound nets on the west pins,
+    # eastbound on the east ones, furthest travel on the outermost pin. On a
+    # QFN48 pin 11 is the bottom of the west edge and pins 14-21 run west to
+    # east along the south edge, so the order below is a physical one.
+    #
+    # ⚠️ P2.01/SCK, P2.02/SDO and P2.04/SDI DO NOT MOVE. Those are the pins the
+    # nRF54L15's high-speed SPIM is wired to in silicon; the other SPIM
+    # instances reach any GPIO through PSEL but run at 8 MHz instead of 32, and
+    # the A121 streams sweeps over this bus.
+    #
+    # ⚠️ CS_RADAR_R gives up P2.05/CSN, and that costs nothing: there are two
+    # radars on one bus, so at most one chip select could ever have been the
+    # hardware CSN. Driving one from the peripheral and one from a GPIO would
+    # have made two identical parts behave differently.
+    (11, "P2.00", OUT,     "CS_RADAR_L"),
     (12, "P2.01/SCK", OUT, "SPI_SCK"),
     (13, "P2.02/SDO", OUT, "SPI_MOSI"),
-    (14, "P2.03", OUT,     "CS_RADAR_L"),
+    (14, "P2.03", IN,      "RADAR_IRQ_L"),
     (15, "P2.04/SDI", IN,  "SPI_MISO"),
-    (16, "P2.05/CSN", OUT, "CS_RADAR_R"),
-    (17, "P2.06", OUT,     "CS_CAM"),
-    (18, "P2.07", OUT,     "RADAR_EN"),
-    (19, "P2.08", IN,      "RADAR_IRQ_L"),
+    (16, "P2.05/CSN", OUT, "CS_CAM"),
+    (17, "P2.06", OUT,     "RADAR_EN"),
+    (18, "P2.07", OUT,     "MUX_S3"),
+    (19, "P2.08", OUT,     "MUX_EN_N"),
     (20, "P2.09", IN,      "RADAR_IRQ_R"),
-    (21, "P2.10", OUT,     "MUX_EN_N"),
+    (21, "P2.10", OUT,     "CS_RADAR_R"),
     (22, "VDD", PWR_IN,    "VDD_3V3"),
     (23, "P0.00", BIDI,    "I2C_SDA"),
     (24, "P0.01", OUT,     "I2C_SCL"),

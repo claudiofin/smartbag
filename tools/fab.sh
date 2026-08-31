@@ -10,6 +10,10 @@
 # Usage:  tools/fab.sh [outdir]
 set -e
 cd "$(dirname "$0")/.."
+# No bytecode cache: a stale .pyc means checking a file that is no
+# longer on disk. See tools/verify.sh.
+export PYTHONDONTWRITEBYTECODE=1
+
 OUT="${1:-fab}"
 BOARD=hardware/smartbag_core.kicad_pcb
 rm -rf "$OUT"; mkdir -p "$OUT/gerbers"

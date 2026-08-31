@@ -9,6 +9,15 @@
 # what the design costs. Each has caught things the others could not see.
 set -e
 cd "$(dirname "$0")/.."
+# ⛔ NO BYTECODE CACHE. Every number this project prints comes from importing
+# hardware/*.py and measuring what is in them, which makes a stale __pycache__
+# entry a way to check the wrong file and be told it passed. That is not
+# hypothetical: restoring bom.py from a backup produced a file whose size and
+# timestamp matched the .pyc of an earlier version, so Python kept serving the
+# old bytecode and the bill of materials was validated against a part number
+# that was no longer in the source. Writing none is cheaper than invalidating.
+export PYTHONDONTWRITEBYTECODE=1
+
 KPY=/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3
 
 echo "== design constraints =="

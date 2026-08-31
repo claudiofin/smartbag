@@ -1,14 +1,10 @@
 ** Drc report for smartbag_optics.kicad_pcb **
-** Created on 2026-08-31T16:36:38 **
+** Created on 2026-08-31T21:17:48 **
 ** Report includes: Errors **
 
 ** Found 0 DRC violations **
 
-** Found 2 unconnected pads **
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(193.1480 mm, 145.0148 mm): Via [GND] on F.Cu - B.Cu
-    @(148.4000 mm, 142.4000 mm): Zone 'GND_top' [GND] on F.Cu, priority 0
+** Found 1 unconnected pads **
 [unconnected_items]: Missing connection between items
     Local override; error
     @(148.4000 mm, 142.4000 mm): Zone 'GND_bottom' [GND] on B.Cu, priority 0

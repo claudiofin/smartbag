@@ -23,19 +23,20 @@ been built.
 | | |
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
-| board | **94 parts, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. 10 pads of 480 still need finishing by hand — see [Routing](#routing). |
+| board | **111 footprints, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. **4 items of ~500 still need finishing by hand** — see [Routing](#routing). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **23 of 23 agree** — see [The bill of materials](#the-bill-of-materials). |
 | firmware | the wake-up chain, the ledger, the taxel driver, the GATT layer, **the charge policy and the sensor bring-up** — **690 assertions**, `-Werror`. What is left is nine HAL functions and a vendor BLE stack, and they are named. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). ⚠️ It now has to run on a Cortex-M33, not an NPU. |
 | app | **written and running** — [`app/`](app/), tested against the firmware's own bytes. No native build; it is a web app. |
 | RF | full-wave simulation rejected the antenna, closed-form analysis then rejected the whole feed — and the real part **dissolved the problem**: 60 GHz silicon has the antenna inside the package. There is now **no 60 GHz copper on this board.** See [RF](#rf). |
-| thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). It asked for charge current to be a function of cell temperature; the board now has an NTC and a PMIC that does exactly that. |
+| thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). It asked for charge current to be a function of cell temperature; the cell now has an NTC **in the pack**, a PMIC that reads it, and a policy under 264 assertions. |
 | the taxel front end | measured wrong, then **fixed in hardware**: six transimpedance amplifiers and a 16:1 multiplexer — see [The taxel matrix](#the-taxel-matrix). |
 | the 2.4 GHz antenna | ⛔ its datasheet found **three errors** in this design, one of them a terminal tied to ground that the part marks NC — see [The antenna](#the-antenna). |
-| the optics flex | **exists now.** J1 was a connector to nothing for the whole project: the camera, the illuminators and the ToF live here. DRC 0 errors, 2 unconnected pads. |
+| the optics flex | **exists now.** J1 was a connector to nothing for the whole project: the camera, the illuminators and the ToF live here. DRC 0 errors, 1 unconnected item. |
 | the taxel sheet | **exists now.** 96 interdigitated sites, 16 columns and 6 rows, no components. **DRC 0 errors, 0 unconnected pads.** |
 | fabrication | Gerbers, drill, placement, DRC reports and a generated fab note for **all three boards**: `tools/fab.sh`. |
+| wireless power | ⛔ there was **no Qi receiver**: a coil was wired straight into a PMIC input that wants 4.0–5.5 V DC. There is now a BQ51013B, a dual resonant tank computed from the coil's own inductance, and a rectifier — see [Wireless power](#wireless-power). |
 
 Run everything that can be checked:
 
@@ -416,23 +417,41 @@ board and the tool reported the damage as its starting state.
 
 | | |
 |---|---|
-| tracks / vias | **1415 / 356**, 3.0 m of copper |
+| tracks / vias | **1713 / 393**, 4.3 m of copper |
 | DRC | **0 errors, 0 footprint errors**, schematic parity clean |
-| unconnected | **10 pads of 488** |
-| layers | F.Cu 701 · In2.Cu 674 · B.Cu 40 · **In1.Cu 0 — a solid ground reference** |
+| unconnected | **4 items of ~500** |
+| layers | F.Cu 724 · In2.Cu 919 · B.Cu 70 · **In1.Cu 0 — a solid ground reference** |
 
-⚠️ **The four that are left** are one cluster, not four problems: `SPI_SCK`,
-`SPI_MOSI`, `SPI_MISO`, `CS_RADAR_R`, `RADAR_EN`, both radar interrupts and
-`MUX_EN_N`, all on U1's bottom edge, plus `VDD_3V3` at pin 10. Everything that
-edge talks to is spread along a 196 mm board and the pins face the wrong way.
+⛔ **Sixteen of those twenty were a pin assignment, not a routing problem.** The
+board first came back with one contiguous run of U1's pins unrouted — `MUX_S3`,
+`MUX_EN_N`, `CS_RADAR_R`, `RADAR_IRQ_R`, `SPI_MOSI` — and the thing they had in
+common was direction: every destination was tens of millimetres to the **east**,
+and `MUX_S3` sat on pin 11, which is on the package's **west** edge. That net
+began by crossing the whole processor before it could start travelling.
 
-⛔ **Turning U1 round is the obvious fix and it does not work.** At 180° and
-again at 90°, Freerouting's autorouter finished in minutes and its *optimiser*
-then ground for over an hour without ever writing a session file — three
-attempts, two angles, same outcome. The unrouted-facing board routes in three.
-A layout the tool cannot finish is worse than one that is a little less tidy, so
-the cost is paid where it can be counted: ten pads, named, for a human to
-finish. Freerouting recommends exactly that once it stops improving.
+⭐ **Which GPIO carries which signal is a layout decision**, and on this part it
+is nearly free: the firmware addresses pins through a HAL of symbolic ids, so
+the physical assignment is invisible to it. The P2 block is now ordered by
+destination — westbound nets on the west pins, eastbound on the east ones,
+furthest travel on the outermost pin. `SPI_SCK`, `SPI_MOSI` and `SPI_MISO` do
+not move, because those are the pins the high-speed SPIM is wired to in silicon
+and the other instances run at 8 MHz instead of 32.
+
+| | before | after |
+|---|---|---|
+| unconnected | 16 | **4** |
+| autoroute time | 65 min | **15 min** |
+
+⚠️ **The four that are left** are `VDD_3V3` at U1 pin 10, `RADAR_EN` at U2,
+`RADAR_IRQ_R` between U1 and U6, and one ground island with nowhere to put a
+via. `finish.py` reports "no shape fits" for all of them; they are a human's
+half hour in KiCad.
+
+⛔ **Turning U1 round is the obvious-looking fix and it does not work.** At 180°
+and again at 90°, Freerouting's autorouter finished in minutes and its
+*optimiser* then ground for over an hour without ever writing a session file —
+three attempts, two angles, same outcome. Reassigning the pins got the same
+result for free.
 
 ### Three hand-written attempts first, and what they got wrong
 
@@ -545,6 +564,45 @@ the PMIC. A limit is only real once somebody has set it.
 ```bash
 python3 thermal/budget.py
 ```
+
+## Wireless power
+
+⛔ **There was no receiver.** For the whole project J3 was labelled *Qi coil* and
+wired into the PMIC's VBUS — an input whose datasheet asks for **4.0 to 5.5 V
+DC**. A coil on a charging pad does not produce that. It produces alternating
+current at 100–200 kHz, at whatever amplitude the coupling happens to give, and
+the design had nothing between the two. Every one of the checks in this
+repository passed, because none of them knew what a coil is.
+
+⭐ **What the missing piece actually is.** A Qi receiver is not a rectifier with
+extra steps. It is a resonant network, a synchronous rectifier, and a
+*communication channel* — the receiver tells the transmitter how much power to
+send by modulating its own load, and a transmitter that hears nothing shuts down
+after a few seconds. The part is a **BQ51013B**, and it brings eleven components
+with it:
+
+| | |
+|---|---|
+| **Cs**, series with the coil | **270 nF** C0G — resonates 8.8 µH at 100 kHz |
+| **Cd**, parallel | **2.7 nF** C0G — the 1 MHz tank the transmitter pings to detect a receiver |
+| **COMM1/COMM2** | the load-modulation capacitors that let the receiver talk back |
+| **CLAMP1/CLAMP2, BOOT1/BOOT2** | overvoltage clamp and the rectifier's bootstrap rails |
+| **RILIM, ADEN, FOD** | current limit, and the resistor divider that tells the transmitter what losses to expect |
+
+Both resonant values come from the coil's own inductance rather than from a
+reference design — [`hardware/qi_resonance.py`](hardware/qi_resonance.py) prints
+them and, more usefully, prints how far they move if the assembled **L′** is not
+the datasheet's 8.8 µH: 10% high takes Cs to 262 nF, 20% to 240 nF.
+
+⚠️ **C0G is not a preference here.** Both capacitors carry the full coil current
+at 100 kHz, and a class-II dielectric loses capacitance under bias — an X7R part
+of the same nominal value detunes the tank as soon as it is working.
+
+⚠️ **Still untuned on hardware.** The resonance is computed, the FOD divider is a
+starting value, and neither can be finished without a built board: L′ has to be
+measured on the assembled coil in its final position, and FOD has to be
+calibrated against a real transmitter. Both are named in
+[`fab/README-FAB.md`](tools/fab_notes.py).
 
 ## The taxel matrix
 

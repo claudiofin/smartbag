@@ -19,6 +19,10 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# No bytecode cache: a stale .pyc means checking a file that is no
+# longer on disk. See tools/verify.sh.
+export PYTHONDONTWRITEBYTECODE=1
+
 JAR="${FREEROUTING_JAR:-$HOME/.kicad-mcp/freerouting.jar}"
 KPY="${KICAD_PYTHON:-/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3}"
 PASSES="${1:-60}"

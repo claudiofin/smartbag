@@ -380,6 +380,57 @@ check("the closed-bag charge ceiling matches what the model allows",
       abs(_cdef("SB_CHG_SLOW_MW") - _safe_w * 1000) < 100,
       f"firmware {_cdef('SB_CHG_SLOW_MW')} mW vs model {_safe_w * 1000:.0f} mW")
 
+# ⛔ KICAD WARNS THAT THE BOARD'S A121 DOES NOT MATCH THE LIBRARY, AND IT IS
+# RIGHT ABOUT THE BYTES. generate_pcb.py re-serialises every footprint as it
+# writes it into the board, so the one footprint this project draws itself comes
+# out formatted differently from the .kicad_mod it was read from, and the
+# lib_footprint_mismatch check compares them and complains. Twice, once per
+# radar.
+#
+# ⚠️ A warning that is expected is a warning nobody reads, and the next one will
+# be real. What that check exists to catch is a library edit that never reached
+# the board — so the property it actually cares about is asserted here instead,
+# against the file on disk: same pad names, same positions, same sizes, same
+# layers. Fifty balls, to three decimal places.
+print("\n── the board's own footprint still matches the library it came from")
+
+
+def _pads(text):
+    out = {}
+    for m in re.finditer(
+            r'\(pad "([^"]*)"\s+(\S+)\s+(\S+)[^(]*\(at ([-\d.]+) ([-\d.]+)'
+            r'[^)]*\)\s*\(size ([-\d.]+) ([-\d.]+)\)\s*\(layers ([^)]*)\)',
+            text, re.S):
+        name, typ, shape, x, y, w, h, layers = m.groups()
+        out[name] = (typ, shape, round(float(x), 3), round(float(y), 3),
+                     round(float(w), 3), round(float(h), 3),
+                     tuple(sorted(layers.split())))
+    return out
+
+
+_libfp = os.path.join(ROOT, "hardware", "footprints", "SmartBag.pretty",
+                      "Acconeer_A121_fcCSP50.kicad_mod")
+_lib_pads = _pads(open(_libfp).read())
+_pcb_text = open(os.path.join(ROOT, "hardware", "smartbag_core.kicad_pcb")).read()
+_i = _pcb_text.find("Acconeer_A121_fcCSP50")
+_j = _pcb_text.rfind("(footprint", 0, _i)
+_d, _k = 0, _j
+while True:
+    if _pcb_text[_k] == "(":
+        _d += 1
+    elif _pcb_text[_k] == ")":
+        _d -= 1
+    _k += 1
+    if _d == 0:
+        break
+_board_pads = _pads(_pcb_text[_j:_k])
+check("the A121 on the board has the library's 50 balls",
+      len(_board_pads) == len(_lib_pads) == 50,
+      f"library {len(_lib_pads)}, board {len(_board_pads)}")
+_diff = [n for n in _lib_pads if _lib_pads[n] != _board_pads.get(n)]
+check("every ball matches name, position, size and layers",
+      not _diff, f"{len(_diff)} differ: {_diff[:4]}")
+
 print("\n── the pictures are not older than what they show")
 # ⛔ NOTHING HAS EVER CHECKED THIS, and it is the easiest way for a repository to
 # start lying. A render is a claim about a design at a moment; the design moved

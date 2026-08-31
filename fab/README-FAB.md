@@ -34,7 +34,7 @@ configured low, and that is a build-time decision, not a preference.
 |---|---|
 | outline | 196 x 20 mm strip |
 | copper layers | 4 — F.Cu / In1.Cu / In2.Cu / B.Cu |
-| tracks / vias | 1704 / 387 |
+| tracks / vias | 1713 / 386 |
 | finished thickness | 0.6 mm rigid islands on polyimide flex |
 | antenna areas | 0.25 mm — see the stackup note below |
 
@@ -116,7 +116,7 @@ land. Everything else on the board would have been happy with 0.2 mm.
 
 ## Assembly
 
-- **7 parts at 0.5 mm pitch or finer**, including two 50-ball BGAs.
+- **8 parts at 0.5 mm pitch or finer**, including two 50-ball BGAs.
   Reflow only; nothing here is hand-solderable, and the ground pours use solid
   pad connection rather than thermal relief for that reason.
 - ⚠️ **The A121 is MSL 3 and takes at most two reflow passes.** Bake before use

@@ -1,6 +1,6 @@
 PCB statistics report
 =====================
-- Date: Monday, August 31, 2026 at 04:36:43 PM
+- Date: Monday, August 31, 2026 at 09:17:55 PM
 - Project: smartbag_core
 - Board name: smartbag_core
 
@@ -8,22 +8,22 @@ Board
 -----
 - Width: 196.0000 mm
 - Height: 20.0000 mm
-- Area: 3560.00 mm²
-- Front copper area: 3166.501 mm²
-- Back copper area: 3294.789 mm²
-- Min track clearance: 0.1008 mm
+- Area: 3656.00 mm²
+- Front copper area: 3233.517 mm²
+- Back copper area: 3384.211 mm²
+- Min track clearance: 0.1015 mm
 - Min track width: 0.1000 mm
 - Min drill diameter: 0.1000 mm
 - Board stackup thickness: 0.6000 mm
 
-- Front footprint area: 897.901 mm²
+- Front footprint area: 959.842 mm²
 - Back footprint area: 0.00 mm²
-- Front component density: 25.22 %
+- Front component density: 26.25 %
 - Back component density: 0.00 %
 Pads
 ----
 - Through hole: 0
-- SMD: 495
+- SMD: 550
 - Connector: 0
 - NPTH: 0
 - Castellated: 0
@@ -31,7 +31,7 @@ Pads
 
 Vias
 ----
-- Through vias: 387
+- Through vias: 386
 - Blind vias: 0
 - Buried vias: 0
 - Micro vias: 0
@@ -42,13 +42,13 @@ Components
 |              | Front Side | Back Side | Total |
 |--------------|------------|-----------|-------|
 |THT:          |          0 |         0 |     0 |
-|SMD:          |         99 |         0 |    99 |
+|SMD:          |        111 |         0 |   111 |
 |Unspecified:  |          0 |         0 |     0 |
-|Total:        |         99 |         0 |    99 |
+|Total:        |        111 |         0 |   111 |
 
 Drill holes
 -----------
 
 | Count | Shape |    X Size |    Y Size | Plated | Via/Pad | Start Layer | Stop Layer |
 |-------|-------|-----------|-----------|--------|---------|-------------|------------|
-|   387 | Round | 0.1000 mm | 0.1000 mm |    PTH |     Via |        F.Cu |       B.Cu |
+|   386 | Round | 0.1000 mm | 0.1000 mm |    PTH |     Via |        F.Cu |       B.Cu |

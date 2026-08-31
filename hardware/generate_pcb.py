@@ -483,6 +483,38 @@ def _clear(x, y, boxes):
     return not any(a <= x <= b and c <= y <= d for a, b, c, d in boxes)
 
 
+def _inside_outline(x, y, margin=0.6):
+    """Is (x, y) far enough inside the board edge to put a via there?
+
+    ⛔ FOUR STITCHING VIAS WERE OUTSIDE THE BOARD. The rows at the ends run along
+    y = ±7.6, which is inside the 20 mm-tall rigid islands and OUTSIDE the 14 mm
+    flex tails — and each row starts three millimetres into the tail. Nothing
+    checked, because the grid was written as ranges of x and the outline is a
+    polygon somewhere else in the file. DRC did not call them out-of-board
+    either; it called them unconnected, which is the same fact told in a way
+    that sounds like a routing problem.
+
+    ⚠️ Ray casting, with the margin applied by testing the four points around
+    the candidate rather than by shrinking the polygon — the outline is
+    non-convex (that is the whole point of the tails) and offsetting a
+    non-convex polygon correctly is a bigger job than this needs.
+    """
+    def within(px, py):
+        n = len(OUTLINE)
+        inside = False
+        for i in range(n):
+            x1, y1 = OUTLINE[i]
+            x2, y2 = OUTLINE[(i + 1) % n]
+            if (y1 > py) != (y2 > py):
+                xx = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
+                if px < xx:
+                    inside = not inside
+        return inside
+
+    return all(within(x + dx, y + dy) for dx, dy in
+               ((0, 0), (margin, 0), (-margin, 0), (0, margin), (0, -margin)))
+
+
 def _segment(a, b, width, layer, net):
     return (f'\t(segment (start {CX+a[0]:.4f} {CY+a[1]:.4f})'
             f' (end {CX+b[0]:.4f} {CY+b[1]:.4f}) (width {width})'
@@ -561,7 +593,7 @@ def route(net_index, settled):
     for xs, ys in STITCH_ROWS:
         for x in xs:
             for y in ys:
-                if _clear(x, y, boxes):
+                if _clear(x, y, boxes) and _inside_outline(x, y):
                     out.append(via(x, y, gnd))
 
     out += rt.route(nl.PARTS, FP_LIB, net_index, _segment, _via_at,
