@@ -379,7 +379,22 @@ with rip-up and retry.
 ```bash
 tools/route.sh                      # generate → DSN → route → import → stitch → DRC
 hardware/reroute_from_session.sh    # rebuild from the committed .ses, no Java
+hardware/stitch.py                 # tie orphaned ground islands back to the plane
+hardware/finish.py                 # try the last few by hand, with DRC as the judge
 ```
+
+⭐ **`finish.py` exists because Freerouting recommends something it cannot do.**
+When it stops improving it says so: *"it is recommended to stop it and finish the
+board manually."* Manually is fine — but a person drawing four tracks and
+eyeballing them is exactly the step this project avoids everywhere else. So the
+candidates are drawn blind, seven shapes per pad, and **DRC decides**: a shape is
+kept only if the board comes out with fewer unconnected pads and no new
+violations, and reverted otherwise. It cannot make the board worse; the worst it
+can do is fail to help, which on these four pads is what it reports.
+
+⚠️ Its first version reverted by reloading the board from the file it had just
+written the failed candidate into. Three rejected tracks accumulated in the
+board and the tool reported the damage as its starting state.
 
 | | |
 |---|---|
@@ -388,7 +403,7 @@ hardware/reroute_from_session.sh    # rebuild from the committed .ses, no Java
 | unconnected | **10 pads of 488** |
 | layers | F.Cu 701 · In2.Cu 674 · B.Cu 40 · **In1.Cu 0 — a solid ground reference** |
 
-⚠️ **The ten that are left** are one cluster, not ten problems: `SPI_SCK`,
+⚠️ **The four that are left** are one cluster, not four problems: `SPI_SCK`,
 `SPI_MOSI`, `SPI_MISO`, `CS_RADAR_R`, `RADAR_EN`, both radar interrupts and
 `MUX_EN_N`, all on U1's bottom edge, plus `VDD_3V3` at pin 10. Everything that
 edge talks to is spread along a 196 mm board and the pins face the wrong way.

@@ -1,6 +1,6 @@
 PCB statistics report
 =====================
-- Date: Monday, August 31, 2026 at 04:31:44 PM
+- Date: Monday, August 31, 2026 at 04:36:43 PM
 - Project: smartbag_core
 - Board name: smartbag_core
 
@@ -9,9 +9,9 @@ Board
 - Width: 196.0000 mm
 - Height: 20.0000 mm
 - Area: 3560.00 mm²
-- Front copper area: 3163.254 mm²
-- Back copper area: 3294.794 mm²
-- Min track clearance: 0.1015 mm
+- Front copper area: 3166.501 mm²
+- Back copper area: 3294.789 mm²
+- Min track clearance: 0.1008 mm
 - Min track width: 0.1000 mm
 - Min drill diameter: 0.1000 mm
 - Board stackup thickness: 0.6000 mm
