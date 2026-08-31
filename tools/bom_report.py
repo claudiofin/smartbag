@@ -54,16 +54,27 @@ def measure(lib, fp):
     MECHANICAL = {"", "MP", "SH", "MP1", "MP2", "NC"}
     numbers = {n for n in re.findall(r'\(pad "([^"]*)" ', t)
                if n not in MECHANICAL}
+    # ⛔ IS THE EXTRA PAD A THERMAL PAD, OR A MISTAKE? The check allowed one pad
+    # more than the datasheet's pin count, because a QFN's exposed pad carries a
+    # number the datasheet does not count as a pin. That tolerance then quietly
+    # passed a 3-way connector recorded in the bill of materials as a 2-way one:
+    # off by one, in the direction the rule forgave.
+    #
+    # ⚠️ So the extra pad has to LOOK like a thermal pad — several times the area
+    # of an ordinary one. Nothing else gets the benefit of the doubt.
+    sizes = [float(a) * float(b) for a, b in
+             re.findall(r'\(size ([\d.]+) ([\d.]+)\)', t)]
+    has_ep = bool(sizes) and max(sizes) > 4 * sorted(sizes)[len(sizes) // 2]
     pts = [(float(a), float(b))
            for m in re.finditer(
                r'\(fp_(?:line|rect|poly)\b(.*?)\(layer "F\.CrtYd"', t, re.S)
            for a, b in re.findall(
                r'\((?:start|end|xy) ([-\d.]+) ([-\d.]+)\)', m.group(1))]
     if not pts:
-        return len(numbers), None, None
+        return len(numbers), None, None, has_ep
     xs = [p[0] for p in pts]
     ys = [p[1] for p in pts]
-    return len(numbers), max(xs) - min(xs), max(ys) - min(ys)
+    return (len(numbers), max(xs) - min(xs), max(ys) - min(ys), has_ep)
 
 
 def body_fits(cx, cy, bx, by):
@@ -90,13 +101,13 @@ def main():
         entry = catalogue.get(ref)
         if entry is None:
             continue
-        pads, cx, cy = measure(lib, fp)
+        pads, cx, cy, has_ep = measure(lib, fp)
         bx, by, _bz = entry["body"]
         fits = body_fits(cx, cy, bx, by)
         # ⚠️ A thermal pad carries a number the datasheet may or may not count
         # as a pin, so one extra is tolerated and no more.
         pin_gap = pads - entry["pins"]
-        ok = fits and 0 <= pin_gap <= 1
+        ok = fits and (pin_gap == 0 or (pin_gap == 1 and has_ep))
 
         pdf = entry["pdf"]
         archived = pdf and os.path.exists(os.path.join(DS, pdf))

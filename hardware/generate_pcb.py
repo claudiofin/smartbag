@@ -99,11 +99,19 @@ def uid():
 # router could not fit the last two. Widening the tail costs nothing that
 # matters. Bend radius is a function of THICKNESS, not width, so a wider tail
 # folds exactly as tightly; it just carries more copper across the fold.
+# ⚠️ THE CENTRE ISLAND IS 124 mm, UP FROM 94, AND THE ROOM CAME FROM THE ENDS.
+# The Qi receiver and its resonant tank — eleven parts that were missing from
+# the board entirely — did not fit otherwise. The end islands were the place to
+# take it from: each held a radar, a crystal and six capacitors, about 50 mm2 of
+# parts in 324 mm2 of board. They are 14 mm now instead of 20.
+#
+# ⚠️ The flex tails shrank from 30 mm to 22 with them. A tail folds on its
+# THICKNESS, not its length; 22 mm is still four times the bend radius.
 OUTLINE = [
-    (-98, -10), (-78, -10), (-78, -7), (-48, -7), (-48, -10),
-    (48, -10), (48, -7), (78, -7), (78, -10), (98, -10),
-    (98, 10), (78, 10), (78, 7), (48, 7), (48, 10),
-    (-48, 10), (-48, 7), (-78, 7), (-78, 10), (-98, 10),
+    (-98, -10), (-84, -10), (-84, -7), (-62, -7), (-62, -10),
+    (62, -10), (62, -7), (84, -7), (84, -10), (98, -10),
+    (98, 10), (84, 10), (84, 7), (62, 7), (62, 10),
+    (-62, 10), (-62, 7), (-84, 7), (-84, 10), (-98, 10),
 ]
 
 # ⭐ THE BOM AND THE PLACEMENT NOW LIVE IN netlist.py, next to the pins and the
@@ -324,6 +332,46 @@ def antenna_keepout(x, y, w=7.0, h=2.2):
 	)'''
 
 
+def fiducial_keepout(x, y, side=2.0, layers='"F.Cu" "In1.Cu" "In2.Cu" "B.Cu"'):
+    """Keep every layer's copper out of a fiducial's optical window.
+
+    ⛔ THE ROUTER DOES NOT KNOW WHAT A FIDUCIAL IS. It has no net, so Specctra
+    carries it as a component with no connections and freerouting treats the
+    space above it as free board — which is how a VDD_3V3 track ended up 0.44 mm
+    from FID5's pad, a via landed inside FID4's mask opening, and five soldermask
+    apertures merged two different nets into one window. A placement camera
+    looking for a round copper mark on bare mask would have found a track
+    crossing it.
+
+    ⭐ The size is not chosen, it is READ OFF THE FOOTPRINT: 1 mm of bare copper
+    with a 0.5 mm mask margin is a 2 mm soldermask opening, and a 2 mm square
+    contains that 2 mm circle exactly. Keeping copper out of the window is the
+    whole optical requirement — no more, since every millimetre cleared here is
+    a millimetre the router cannot use on a board that is already tight.
+
+    ⚠️ Pads stay allowed. A neighbouring part whose pad grazes the window is a
+    placement question, and place.py answers it by giving fiducials a 2 mm
+    courtyard of their own; making it a keepout violation too would report the
+    same problem twice and block routing on the second one.
+    """
+    h = side / 2
+    pts = " ".join(f"(xy {CX + x + dx:.4f} {CY + y + dy:.4f})" for dx, dy in (
+        (-h, -h), (h, -h), (h, h), (-h, h)))
+    return f'''	(zone
+		(net 0)
+		(net_name "")
+		(layers {layers})
+		(uuid "{uid()}")
+		(name "FID_KEEPOUT")
+		(hatch edge 0.5)
+		(keepout (tracks not_allowed) (vias not_allowed) (pads allowed)
+			(copperpour not_allowed) (footprints allowed))
+		(placement (enabled no) (sheetname ""))
+		(fill (thermal_gap 0.3) (thermal_bridge_width 0.25))
+		(polygon (pts {pts}))
+	)'''
+
+
 def power_zone(layer, name, net_name, net, x0=-46.5, x1=47.5, y0=-8.5, y1=8.5):
     """A rectangular supply pour over the centre island.
 
@@ -390,15 +438,29 @@ for _r, _v, _s, _l, _f, _pins, _x, _y in nl.PARTS:
             NET_INDEX.setdefault(_key, len(NET_INDEX))
 
 
-def _keepouts(margin=0.6):
+def _keepouts(settled, margin=0.6):
     """Courtyard of every placed part, in board coordinates, plus a margin.
 
     ⚠️ The first stitching pass dropped vias on a fixed grid and put seven of
     them inside footprints: 7 hole-clearance violations, 7 mask bridges and 4
     shorts. A via grid has to know where the parts are.
+
+    ⛔ AND IT HAS TO KNOW WHERE THEY ACTUALLY ARE. This read the coordinates out
+    of netlist.py, which are the floorplan HINT — place.relax() then moves parts
+    by up to 3.9 mm, so every box was protecting the spot a part used to be
+    proposed for. The 0.6 mm margin hid it for as long as nothing moved far.
     """
     boxes = []
-    for _ref, _v, _s, lib, fp, _pins, x, y in nl.PARTS:
+    for _ref, _v, _sym, lib, fp, _pins, _hx, _hy in nl.PARTS:
+        x, y = settled[_ref]
+        # ⚠️ A fiducial's library courtyard is barely wider than its 1 mm pad,
+        # which would let a stitching via sit inside the 2 mm window a camera
+        # reads. Two of them did. Same number as place.FID_COURTYARD.
+        if _sym == place.FIDUCIAL_SYMBOL:
+            h = place.FID_COURTYARD / 2
+            boxes.append((x - h - margin, x + h + margin,
+                          y - h - margin, y + h + margin))
+            continue
         path = footprint_path(lib, fp)
         t = open(path).read()
         pts = [(float(a), float(b))
@@ -475,23 +537,32 @@ def via_in_pad(net_index, settled):
     return out
 
 
-def route(net_index):
+# Ground stitching: (x range, the two y rows it runs along).
+STITCH_ROWS = [
+    (range(-46, 48, 4), (-9.3, 9.3)),      # centre island, along both edges
+    (range(-76, -48, 3), (-2.6, 2.6)),     # left flex tail
+    (range(51, 79, 3), (-2.6, 2.6)),       # right flex tail
+    (range(-94, -78, 4), (-7.6, 7.6)),     # left rigid island
+    (range(82, 98, 4), (-7.6, 7.6)),       # right rigid island
+]
+
+
+def route(net_index, settled):
     """Ground stitching plus the signal routing from route.py."""
     out = []
     gnd = net_index["GND"]
-    boxes = _keepouts()
-    for x in range(-46, 48, 4):
-        for y in (-9.3, 9.3):
-            if _clear(x, y, boxes):
-                out.append(via(x, y, gnd))
-    for x in range(-76, -48, 3):
-        out += [via(x, -2.6, gnd), via(x, 2.6, gnd)]
-    for x in range(51, 79, 3):
-        out += [via(x, -2.6, gnd), via(x, 2.6, gnd)]
-    for x in range(-94, -78, 4):
-        out += [via(x, -7.6, gnd), via(x, 7.6, gnd)]
-    for x in range(82, 98, 4):
-        out += [via(x, -7.6, gnd), via(x, 7.6, gnd)]
+    boxes = _keepouts(settled)
+    # ⛔ THE CLEARANCE TEST USED TO GUARD ONE ROW OUT OF FIVE. The comment on
+    # _keepouts said a via grid has to know where the parts are; four of the
+    # five loops below did not ask. It survived because the tails and the end
+    # islands were nearly empty — until a fiducial moved onto one of those rows
+    # and collected a short, two hole clearances, a mask bridge and a keepout
+    # violation from a single unguarded via.
+    for xs, ys in STITCH_ROWS:
+        for x in xs:
+            for y in ys:
+                if _clear(x, y, boxes):
+                    out.append(via(x, y, gnd))
 
     out += rt.route(nl.PARTS, FP_LIB, net_index, _segment, _via_at,
                     lambda x, y: _clear(x, y, boxes))
@@ -571,6 +642,9 @@ def build():
     # that.
     _ax, _ay = settled["AE1"]
     r.append(antenna_keepout(_ax, _ay))
+    for _ref, _v, _sym, *_rest in nl.PARTS:
+        if _sym == place.FIDUCIAL_SYMBOL:
+            r.append(fiducial_keepout(*settled[_ref]))
     r.append(ground_zone("F.Cu", "GND_top"))
     r.append(ground_zone("In1.Cu", "GND_reference"))
     r.append(ground_zone("B.Cu", "GND_bottom"))
@@ -606,7 +680,7 @@ def build():
     # object producing more than half the errors on the board. Tracks that are
     # not connectivity have no business in a board file.
     r += via_in_pad(NET_INDEX, settled)
-    r += route(NET_INDEX)
+    r += route(NET_INDEX, settled)
 
     # ── Silkscreen ───────────────────────────────────────────────────────
     # The front only has room for short labels; the title block goes on the

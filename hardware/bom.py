@@ -85,6 +85,56 @@ BOM = {
                 "charge current has to be a function of cell temperature, and "
                 "this part does that in hardware.",
     ),
+    "U11": PART(
+        mpn="BQ51013BRHLR", manufacturer="Texas Instruments",
+        description="5 W Qi receiver: synchronous rectifier, WPC control, 5 V out",
+        package="VQFN-20 (RHL)", body=(4.5, 3.5, 0.9), pitch=0.5, pins=20,
+        datasheet="https://www.ti.com/lit/ds/symlink/bq51013b.pdf",
+        pdf="BQ51013B_ti.pdf", usd=None, stock="commodity",
+        verdict="⛔ THIS PART WAS SIMPLY NOT ON THE BOARD, and nothing noticed. "
+                "J3 ran from a connector labelled 'Qi RX coil' straight into "
+                "the PMIC's VBUS pin — and VBUS wants 4.0 to 5.5 V of DC, it is "
+                "a USB-C input, while a receiver coil produces ALTERNATING "
+                "current at 100-200 kHz. Every check passed, because a net that "
+                "reaches two pins is a net. The board would have been built, "
+                "put on a charging pad, and done nothing at all. ⭐ And a bare "
+                "rectifier would not have been enough either: Qi is a "
+                "negotiation, and a transmitter that hears nothing back shuts "
+                "down within a second.",
+    ),
+    "L_COIL": PART(
+        mpn="760308103305", manufacturer="Würth Elektronik",
+        description="WE-WPCC Qi receiver coil, 8.8 µH, litz wire with shield",
+        package="coil", body=(44.0, 45.0, 0.72), pitch=None, pins=2,
+        datasheet="https://www.we-online.com/en/components/products/WE-WPCC-RECEIVER",
+        pdf=None, usd=None, stock="commodity",
+        verdict="⚠️ NOT ON ANY OF THE THREE BOARDS — it hangs off J3 and lies "
+                "under the cell. ⭐ It is in this list anyway because it sets "
+                "two components that ARE on the board: hardware/qi_resonance.py "
+                "computes Cs and Cd from its 8.8 µH and the two frequencies WPC "
+                "fixes. Change the coil and both change. ⚠️ And the inductance "
+                "that matters is WPC's L', measured with the shielding in place "
+                "against a reference transmitter — typically 10-20% above the "
+                "datasheet figure, which moves Cs by the same.",
+    ),
+    "BT1": PART(
+        mpn="made-to-order pouch, 4.2 x 58 x 148 mm",
+        manufacturer="(not selected)",
+        description="Li-polymer 3.7 V ~2000 mAh with protection circuit and NTC",
+        package="pouch", body=(148.0, 58.0, 4.2), pitch=None, pins=3,
+        datasheet="", pdf=None, usd=None,
+        stock="⛔ NOT A CATALOGUE PART",
+        verdict="⛔ THE ONE LINE IN THIS BILL OF MATERIALS THAT IS NOT A PART "
+                "YOU CAN ORDER. At 4.2 x 58 x 148 mm this is a semi-custom "
+                "pouch — the shape follows from the insert floor, and nobody "
+                "stocks it. What CAN be specified, and is: 3.7 V nominal, "
+                "~2000 mAh, and a protection circuit with overvoltage, "
+                "undervoltage and overcurrent-discharge protection, which "
+                "nPM1300 section 3.4 requires of anything on its VBAT pin. "
+                "⭐ Plus a 10 kohm NTC at B25/50 = 3380 K brought out on a "
+                "third wire — one of exactly three thermistor types the PMIC "
+                "supports, and the reason J2 has three pins.",
+    ),
     "U4": PART(
         mpn="BMI270", manufacturer="Bosch Sensortec",
         description="6-axis IMU, 14-pin LGA, I2C",
@@ -198,14 +248,19 @@ BOM = {
         verdict="OK — 16 columns, 6 rows, a ground and a shield tab.",
     ),
     "J2": PART(
-        mpn="SM02B-SRSS-TB(LF)(SN)", manufacturer="JST",
-        description="SH series 2-pin 1.0 mm header — the cell",
-        package="JST-SH-02", body=(4.25, 2.9, 2.9), pitch=1.0, pins=2,
+        mpn="SM03B-SRSS-TB(LF)(SN)", manufacturer="JST",
+        description="SH series 3-pin 1.0 mm header — the cell and its thermistor",
+        package="JST-SH-03", body=(5.25, 2.9, 2.9), pitch=1.0, pins=3,
         datasheet="https://www.jst.com/wp-content/uploads/2021/01/eSH1.pdf",
         pdf=None, usd=None, stock="commodity",
-        verdict="OK at the charge current thermal/budget.py allows. ⚠️ At the "
-                "5 W the design originally asked for, an SH contact is at its "
-                "1 A rating and a 2 mm PH would be the honest choice.",
+        verdict="THREE pins, not two, and the third is the reason the charge "
+                "policy means anything. ⛔ RT1 used to be a 0402 on the main "
+                "board — which measures the main board, twenty millimetres of "
+                "foam away from the cell whose temperature the whole policy is "
+                "about. The nPM1300 calls it 'the battery thermistor'; it "
+                "belongs to the pack. ⚠️ And at the 5 W the design originally "
+                "asked for, an SH contact is at its 1 A rating — a 2 mm PH "
+                "would be the honest choice.",
     ),
     "J3": PART(
         mpn="SM02B-SRSS-TB(LF)(SN)", manufacturer="JST",

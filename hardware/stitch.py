@@ -90,6 +90,7 @@ def main(path):
     filler.Fill(board.Zones())
 
     added = skipped = 0
+    mine = []
     for zone in board.Zones():
         net = zone.GetNetCode()
         obs = obstacles(board, net)
@@ -139,6 +140,7 @@ def main(path):
                         v.SetNetCode(net)
                         board.Add(v)
                         obs[0].append((x, y, VIA_D / 2))
+                        mine.append(v)
                         added += 1
                         placed = True
                         break
@@ -148,9 +150,45 @@ def main(path):
                     skipped += 1
 
     filler.Fill(board.Zones())
+
+    # ⛔ THE POUR MOVES AFTER THE VIA IS PLACED, AND SOME VIAS LOSE THEIR COPPER.
+    # Every candidate above is tested against the fill as it stood BEFORE the
+    # via existed; the refill then re-runs clearance around the new hole, and an
+    # island narrow enough can retract away from the very via meant to anchor
+    # it. What is left is not a stitch, it is a hole in the board connected to
+    # nothing — one of those was the optics flex's last unconnected item, and it
+    # was invisible because this tool had already reported "0 islands left
+    # alone" and been believed.
+    #
+    # ⭐ So the claim is CHECKED against the final fill rather than the one the
+    # decision was made on. A via that ends up outside every filled polygon on
+    # both its layers is withdrawn.
+    filled = []
+    for zone in board.Zones():
+        if zone.GetIsRuleArea():
+            continue
+        for layer in zone.GetLayerSet().CuStack():
+            polys = zone.GetFilledPolysList(layer)
+            for i in range(polys.OutlineCount()):
+                one = pcbnew.SHAPE_POLY_SET()
+                one.AddOutline(polys.Outline(i))
+                filled.append((zone.GetNetCode(), layer, one))
+
+    withdrawn = 0
+    for v in mine:
+        p = v.GetPosition()
+        if not any(net == v.GetNetCode() and v.IsOnLayer(layer)
+                   and poly.Collide(pcbnew.VECTOR2I(p.x, p.y), 0)
+                   for net, layer, poly in filled):
+            board.Remove(v)
+            withdrawn += 1
+    if withdrawn:
+        filler.Fill(board.Zones())
+
     board.Save(path)
-    print(f"OK  {added} stitching vias added, {skipped} islands left alone "
-          f"(no clear spot) -> {path}")
+    note = f", {withdrawn} withdrawn (refill left them in a void)" if withdrawn else ""
+    print(f"OK  {added - withdrawn} stitching vias added{note}, "
+          f"{skipped} islands left alone (no clear spot) -> {path}")
 
 
 if __name__ == "__main__":

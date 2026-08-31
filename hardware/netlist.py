@@ -198,6 +198,47 @@ U3_PINS = [
     (33, "EP", PWR_IN,     "GND"),
 ]
 
+# ─── U11: BQ51013B, the Qi receiver. VQFN-20 (RHL), pin table SLUSB62D ───────
+# ⛔ THIS CHIP WAS SIMPLY NOT THERE, and its absence was invisible: J3 went from
+# a connector labelled "Qi RX coil" straight into the PMIC's VBUS pin, and every
+# check passed because a net that reaches two pins is a net. What nothing looked
+# at is that a receiver coil produces ALTERNATING current at 100-200 kHz and the
+# nPM1300's VBUS wants 4.0 to 5.5 V of DC — it is a USB-C input. The board would
+# have been built, put on a charging pad, and done nothing at all.
+#
+# ⭐ WHAT THIS PART ACTUALLY DOES, and why a rectifier alone would not: Qi is a
+# negotiation. The receiver tells the transmitter how much power it wants by
+# modulating its own load, and a transmitter that hears nothing back shuts down
+# after a second. COMM1/COMM2 are that voice.
+U11_PINS = [
+    (1,  "PGND", PWR_IN, "GND"),
+    (2,  "AC1", PASSIVE, "QI_AC1"),
+    (3,  "BOOT1", PASSIVE, "QI_BOOT1"),
+    (4,  "OUT", PWR_OUT, "VQI"),
+    (5,  "CLAMP1", PASSIVE, "QI_CLAMP1"),
+    (6,  "COMM1", PASSIVE, "QI_COMM1"),
+    # ⚠️ Open-drain, "float or tie to PGND if unused". Floated: the PMIC already
+    # reports charge state over I2C and a second, dumber signal for the same
+    # thing is a pin that can disagree with it.
+    (7,  "CHG", PASSIVE, "QI_CHG"),
+    (8,  "AD_EN", PASSIVE, "QI_AD_EN"),
+    # AD is the wired-adapter input. There is no wired adapter — the bag has no
+    # socket — so the datasheet says connect it directly to PGND.
+    (9,  "AD", PWR_IN, "GND"),
+    (10, "EN1", PWR_IN, "GND"),      # <00> = wireless charging enabled
+    (11, "EN2", PWR_IN, "GND"),
+    (12, "ILIM", PASSIVE, "QI_ILIM"),
+    (13, "TS_CTRL", PASSIVE, "QI_TS"),
+    (14, "FOD", PASSIVE, "QI_FOD"),
+    (15, "COMM2", PASSIVE, "QI_COMM2"),
+    (16, "CLAMP2", PASSIVE, "QI_CLAMP2"),
+    (17, "BOOT2", PASSIVE, "QI_BOOT2"),
+    (18, "RECT", PWR_OUT, "QI_RECT"),
+    (19, "AC2", PASSIVE, "QI_AC2"),
+    (20, "PGND", PWR_IN, "GND"),
+    (21, "EP", PWR_IN, "GND"),
+]
+
 # ─── U4: BMI270, LGA-14. Table 22, and the I2C connection diagram (7.2.3) ────
 # ⚠️ CSB to VDDIO selects I2C; SDO to ground picks the low address. Both are
 # instructions from the datasheet, not preferences.
@@ -394,8 +435,23 @@ J4_PINS = ([(1, "GND", PWR_IN, "GND")]
            + [(2 + i, f"C{i}", PASSIVE, f"FSR_C{i}") for i in range(16)]
            + [(18 + i, f"R{i}", PASSIVE, f"FSR_R{i}") for i in range(6)]
            + [(24, "SHLD", PWR_IN, "GND")])
-J2_PINS = [(1, "BAT+", PWR_OUT, "VBAT"), (2, "BAT-", PWR_IN, "GND")]
-J3_PINS = [(1, "QI+", PWR_OUT, "VQI"), (2, "QI-", PWR_IN, "GND")]
+# ⛔ THREE PINS, BECAUSE THE THERMISTOR BELONGS TO THE PACK. RT1 was a 0402 on
+# this board — which measures THIS BOARD, twenty millimetres of foam away from
+# the cell whose temperature the entire charge policy is about. The nPM1300's
+# own words are "the battery thermistor"; every real lithium pack brings it out
+# on a third wire, and that is the only place it means anything.
+J2_PINS = [(1, "BAT+", PWR_OUT, "VBAT"),
+           (2, "NTC", PASSIVE, "NTC"),
+           (3, "BAT-", PWR_IN, "GND")]
+# ⚠️ NEITHER PIN IS GROUND. A receiver coil is a floating winding: both ends go
+# to the rectifier's AC inputs. The old version had one end on VQI and the other
+# on GND, which is a coil shorted to ground through half the rectifier.
+# ⚠️ Only ONE end goes through a capacitor. Cs is the series resonant element
+# and it sits between the coil and AC1; the other end of the winding lands on
+# AC2 directly. Putting a capacitor in both legs would halve the series
+# capacitance and move the tank off 100 kHz.
+J3_PINS = [(1, "COIL_A", PASSIVE, "QI_COIL_A"),
+           (2, "COIL_B", PASSIVE, "QI_AC2")]
 J5_PINS = [(1, "VDD", PWR_IN, "VDD_3V3"), (2, "SWCLK", PASSIVE, "SWDCLK"),
            (3, "SWDIO", PASSIVE, "SWDIO"), (4, "GND", PWR_IN, "GND")]
 # ⛔ TERMINAL 2 IS "NC", AND IT WAS TIED TO GROUND. The Johanson datasheet's
@@ -425,6 +481,8 @@ PARTS = [
      "Bosch_LGA-14_3x2.5mm_P0.5mm", U4_PINS, -3.0, -6.5),
     ("U5", "DRV5032FBDBZR", "DRV5032", "Package_TO_SOT_SMD",
      "SOT-23", U5_PINS, -30.0, -6.0),
+    ("U11", "BQ51013BRHLR", "BQ51013B", "Package_DFN_QFN",
+     "Texas_VQFN-RHL-20", U11_PINS, 30.0, 0.0),
     ("Q1", "SI2302CDS-T1-GE3", "NMOS", "Package_TO_SOT_SMD",
      "SOT-23", Q1_PINS, -30.0, 3.0),
     ("U7", "CD74HC4067SM96", "MUX16", "Package_SO",
@@ -445,8 +503,8 @@ PARTS = [
      "Hirose_FH12-12S-0.5SH_1x12-1MP_P0.50mm_Horizontal", J1_PINS, -46.0, 6.0),
     ("J4", "FFC FSR matrix, 24 way", "FFC_24", "Connector_FFC-FPC",
      "Hirose_FH12-24S-0.5SH_1x24-1MP_P0.50mm_Horizontal", J4_PINS, 34.0, -4.5),
-    ("J2", "LiPo 3.7V 2000mAh", "CONN2", "Connector_JST",
-     "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", J2_PINS, 20.0, 6.5),
+    ("J2", "LiPo 3.7V 2000mAh + NTC", "CONN3", "Connector_JST",
+     "JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal", J2_PINS, 20.0, 6.5),
     ("J3", "Qi RX coil", "CONN2", "Connector_JST",
      "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", J3_PINS, 28.0, 6.5),
     ("J5", "SWD debug", "CONN4", "Connector_JST",
@@ -465,11 +523,19 @@ PARTS = [
     # ⛔ And `in_bom no`, because the footprint carries `exclude_from_bom` and a
     # symbol that disagrees is a footprint/symbol mismatch. Five parts, two
     # warnings each, for a checkbox.
-    ("FID1", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -92.0, -7.5),
-    ("FID2", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], 92.0, -7.5),
-    ("FID3", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -92.0, 7.5),
-    ("FID4", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -79.5, 6.5),
-    ("FID5", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], 79.5, 6.5),
+    # ⛔ TWO PER RIGID ISLAND, DIAGONALLY OPPOSITE — not three global marks on a
+    # 196 mm strip. This board is three rigid islands joined by flex tails, and
+    # a tail is exactly the thing that lets one island sit a little rotated with
+    # respect to the next. A machine that has located the left island from two
+    # marks there knows nothing about where the right one ended up. The previous
+    # five were placed as if the board were one rigid piece, and two of them
+    # landed on the flex.
+    ("FID1", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -96.0, -7.5),
+    ("FID2", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -86.0, 7.5),
+    ("FID3", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], -59.0, -7.5),
+    ("FID4", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], 59.0, 7.5),
+    ("FID5", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], 86.0, -7.5),
+    ("FID6", "fiducial", "FIDUCIAL", "Fiducial", "Fiducial_1mm_Mask2mm", [], 96.0, 7.5),
     ("AE1", "2450AT43F0100E", "ANTENNA", "RF_Antenna",
      "Johanson_2450AT43F0100_2400-2500Mhz", AE1_PINS, -42.0, 0.0),
 ]
@@ -520,9 +586,51 @@ _PASSIVES = [
     ("C44", "1u X5R", "C_0402_1005Metric", "VQI", "GND", 26.6, 6.5),
     ("C45", "1u X5R", "C_0402_1005Metric", "VBUSOUT", "GND", 29.0, 6.5),
     ("C46", "1u X5R", "C_0402_1005Metric", "VDD_CAM", "GND", 31.4, 6.5),
-    # ⛔ The cell thermistor. thermal/budget.py is the whole reason it is here.
-    ("RT1", "10k NTC B3380", "R_0402_1005Metric", "NTC", "GND", 2.0, -5.5),
-    ("R1", "10k 1%", "R_0402_1005Metric", "VSYS", "NTC", 4.5, -5.5),
+    # ⛔ RT1 AND ITS PULL-UP ARE GONE, and both were wrong. The thermistor now
+    # lives in the battery pack on J2 pin 2, where the temperature it reports is
+    # the one the charge policy is actually about — a 0402 on this board
+    # measures this board, twenty millimetres of foam away from the cell. And R1
+    # pulled NTC up to VSYS: the nPM1300 biases that pin itself and measures
+    # ratiometrically, so an external pull-up does not help the reading, it
+    # corrupts it.
+    #
+    # ⚠️ The pack's thermistor must be 10 kohm, B25/50 = 3380 K, 1% — nPM1300
+    # table 12 supports exactly three types and this is one of them.
+
+    # ── the Qi resonant tank and the receiver's support parts ──────────────
+    # ⭐ Cs and Cd are COMPUTED by hardware/qi_resonance.py from the chosen
+    # coil's inductance and the two frequencies WPC fixes: 100 kHz where a
+    # transmitter drives, and 1 MHz where it pings to discover anything is
+    # there. They belong to the COIL, not to the chip — change the coil and both
+    # change. ⚠️ C0G, not X7R: a capacitor whose value walks with applied
+    # voltage detunes the tank, and this one carries the full coil current.
+    ("C80", "270n C0G (Cs)", "C_0603_1608Metric", "QI_COIL_A", "QI_AC1", 24.0, 4.0),
+    ("C81", "2n7 C0G (Cd)", "C_0402_1005Metric", "QI_AC1", "QI_AC2", 26.5, 4.0),
+    ("C82", "10n X7R", "C_0402_1005Metric", "QI_BOOT1", "QI_AC1", 24.0, -3.0),
+    ("C83", "10n X7R", "C_0402_1005Metric", "QI_BOOT2", "QI_AC2", 26.0, -3.0),
+    # ⚠️ The overvoltage clamp. Above 15 V on RECT both switches close and these
+    # become a low impedance across the coil — this is what survives a
+    # transmitter still pushing after the load has gone away.
+    ("C84", "470n X7R 25V", "C_0603_1608Metric", "QI_CLAMP1", "QI_AC1", 28.0, -3.0),
+    ("C85", "470n X7R 25V", "C_0603_1608Metric", "QI_CLAMP2", "QI_AC2", 30.5, -3.0),
+    # ⭐ The receiver's voice. Qi is a negotiation: the transmitter learns how
+    # much power to send by watching reflected impedance change as these switch
+    # in, and one that hears nothing back shuts down within a second. The
+    # datasheet wants 22 nF EFFECTIVE across AC1-AC2; two in series halve, so
+    # each is 47 nF.
+    ("C86", "47n X7R", "C_0402_1005Metric", "QI_COMM1", "QI_AC1", 33.0, -3.0),
+    ("C87", "47n X7R", "C_0402_1005Metric", "QI_COMM2", "QI_AC2", 35.0, -3.0),
+    ("C88", "10u X5R 25V", "C_0603_1608Metric", "QI_RECT", "GND", 29.0, 4.0),
+    # RILIM = R20 + R21 = 320 ohm, and KILIM/RILIM = 314/320 puts the hardware
+    # current limit just under 1 A. FOD taps between them.
+    # ⚠️ The split is a starting point. Foreign-object detection compares
+    # received power against expected, and the ratio has to be calibrated
+    # against a built unit on a real transmitter — like the antenna match, a
+    # value that cannot be computed from any datasheet.
+    ("R20", "220R 1%", "R_0402_1005Metric", "QI_ILIM", "QI_FOD", 32.0, 4.0),
+    ("R21", "100R 1%", "R_0402_1005Metric", "QI_FOD", "GND", 34.0, 4.0),
+    ("R22", "10k 1%", "R_0402_1005Metric", "QI_TS", "GND", 36.0, 4.0),
+
     # nPM1300 output-voltage straps and the hold pin
     ("R2", "10k 1%", "R_0402_1005Metric", "VSET1", "GND", 7.0, -5.5),
     ("R3", "10k 1%", "R_0402_1005Metric", "VSET2", "GND", 9.5, -5.5),
@@ -589,19 +697,19 @@ for _ref, _val, _fp, _na, _nb, _x, _y in _PASSIVES:
 # millimetres.
 PLACEMENT = {
     # ── left rigid island: the first radar ──────────────────────────────────
-    "U2": (-88.0, 0.0), "Y2": (-81.5, -5.5),
-    "C20": (-93.0, 5.0), "C21": (-90.0, 5.0), "C22": (-87.0, 5.0),
-    "C23": (-84.0, 5.0), "C24": (-85.0, -5.5), "C25": (-92.0, -5.5),
+    "U2": (-91.0, 0.0), "Y2": (-87.0, -6.0),
+    "C20": (-95.5, 5.5), "C21": (-92.5, 5.5), "C22": (-89.5, 5.5),
+    "C23": (-86.5, 5.5), "C24": (-91.0, -6.0), "C25": (-95.0, -6.0),
 
     # ── right rigid island: the second radar ────────────────────────────────
-    "U6": (88.0, 0.0), "Y3": (81.5, -5.5),
-    "C30": (93.0, 5.0), "C31": (90.0, 5.0), "C32": (87.0, 5.0),
-    "C33": (84.0, 5.0), "C34": (85.0, -5.5), "C35": (92.0, -5.5),
+    "U6": (91.0, 0.0), "Y3": (87.0, -6.0),
+    "C30": (95.5, 5.5), "C31": (92.5, 5.5), "C32": (89.5, 5.5),
+    "C33": (86.5, 5.5), "C34": (91.0, -6.0), "C35": (95.0, -6.0),
 
     # ── centre island, band 1 (x -46..-28): radio front end and the two FFCs ─
-    "AE1": (-44.0, 0.0), "C6": (-41.0, 4.0), "L2": (-39.5, 0.0),
-    "C11": (-37.0, 4.0),
-    "J1": (-34.0, 5.5), "J5": (-34.0, -5.0),
+    "AE1": (-52.0, 0.0), "C6": (-49.0, 4.0), "L2": (-47.5, 0.0),
+    "C11": (-45.0, 4.0),
+    "J1": (-41.0, 5.5), "J5": (-41.0, -5.0),
     # ── band 2 (x -28..-4): the processor ───────────────────────────────────
     "U1": (-16.0, 0.0), "Y1": (-25.0, -6.0), "U5": (-25.0, 2.5),
     "Q1": (-29.5, -3.0), "R13": (-27.0, -3.0),
@@ -628,18 +736,28 @@ PLACEMENT = {
     "RT1": (13.0, -5.5), "R1": (15.0, -5.5),
     "R2": (8.5, 0.5), "R3": (10.5, 0.5), "R4": (12.5, 0.5),
     "R5": (14.5, 0.5), "R6": (16.5, 0.5),
-    # ── band 4 (x +18..+46): the FSR front end ──────────────────────────────
+    # ── band 4 (x +18..+26): the Qi receiver ────────────────────────────────
+    # ⭐ Beside J3, because the coil's two wires and the resonant tank are the
+    # one part of this board where centimetres of trace are a tuned element
+    # rather than a connection.
+    "U11": (21.0, 0.0), "J3": (17.0, 6.0),
+    "C80": (17.0, 2.5), "C81": (19.5, 2.5), "C88": (25.0, 2.5),
+    "C82": (17.0, -3.0), "C83": (19.5, -3.0),
+    "C84": (22.0, -3.0), "C85": (24.5, -3.0),
+    "C86": (17.0, -6.5), "C87": (19.5, -6.5),
+    "R20": (22.0, -6.5), "R21": (24.0, -6.5), "R22": (26.0, -6.5),
+    # ── band 5 (x +28..+55): the FSR front end ──────────────────────────────
     # The connector is 18 mm long and owns the bottom of this band outright.
-    "J4": (35.0, -4.5),
-    "U8": (20.5, 3.0), "U9": (27.0, 3.0), "U7": (39.5, 3.5),
-    "R10": (19.0, -3.5), "R11": (21.5, -3.5), "R12": (24.0, -3.5),
-    "C60": (26.5, -3.5), "C61": (19.0, -6.5), "C62": (21.5, -6.5),
-    "C63": (24.0, -6.5),
+    "J4": (46.0, -4.8),
+    "U8": (30.0, 3.0), "U9": (36.5, 3.0), "U7": (55.0, 2.0),
+    "R10": (29.0, -3.5), "R11": (31.5, -3.5), "R12": (34.0, -3.5),
+    "C60": (36.5, -1.0), "C61": (29.0, -8.0), "C62": (31.5, -8.0),
+    "C63": (34.0, -8.0),
 }
 # TIA feedback, one row just under the amplifiers
-PLACEMENT.update({f"R{40 + i}": (18.5 + i * 2.3, 0.0) for i in range(6)})
+PLACEMENT.update({f"R{40 + i}": (28.5 + i * 2.3, 0.8) for i in range(6)})
 # the sixteen column pull-ups, two rows along the top
-PLACEMENT.update({f"R{60 + i}": (18.5 + (i % 8) * 2.3, 7.0 - (i // 8) * 2.3)
+PLACEMENT.update({f"R{60 + i}": (30.0 + (i % 8) * 2.4, 7.2 - (i // 8) * 2.4)
                   for i in range(16)})
 
 # ⭐ ROTATION IS PART OF THE FLOORPLAN, and leaving it out cost a routing pass.
@@ -677,11 +795,12 @@ POWER_FLAGS = ["GND"]
 # ⚠️ Nets that legitimately reach one pin. The op-amp spares are unused channels
 # whose inputs the datasheet wants tied, and they are named rather than shorted
 # so nobody later mistakes them for a mistake.
-SINGLE_PIN_NETS = ["VSYS_SNS", "IMU_INT2", "ANT_NC"]
+SINGLE_PIN_NETS = ["VSYS_SNS", "IMU_INT2", "ANT_NC",
+                   "QI_CHG", "QI_AD_EN"]
 
 # ⚠️ Parts that carry no netlist at all — the schematic must mark them out of the
 # bill of materials to match their footprints.
-NOT_IN_BOM = {"FID1", "FID2", "FID3", "FID4", "FID5"}
+NOT_IN_BOM = {"FID1", "FID2", "FID3", "FID4", "FID5", "FID6"}
 
 
 def nets():

@@ -25,6 +25,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
 
 import generate_pcb as base       # noqa: E402
+import place                     # noqa: E402
 
 
 def stackup():
@@ -99,6 +100,15 @@ def build(nl, name, notes=(), pour=True):
     # them together; pouring ground between them shorts the entire matrix to
     # ground, which DRC reported as ten shorting items and would have reported
     # as a dead sensor. A pour is a default, not a law.
+    # ⛔ THE POUR AND THE ROUTER BOTH HAVE TO BE TOLD WHERE THE FIDUCIALS ARE.
+    # Neither can work it out: a fiducial carries no net, so copper flows over
+    # its window and a placement camera looks for a round mark on bare mask and
+    # finds a track. The keepout goes in BEFORE the pours so it is unambiguous
+    # which one wins. Same 2 mm — the footprint's own soldermask opening — as
+    # the insert board.
+    for ref, _v, sym, _l, _f, _p, x, y in nl.PARTS:
+        if sym == place.FIDUCIAL_SYMBOL:
+            r.append(base.fiducial_keepout(x, y, layers='"F.Cu" "B.Cu"'))
     if pour:
         r.append(ground_pour(nl, "F.Cu", "GND_top", net_index))
         r.append(ground_pour(nl, "B.Cu", "GND_bottom", net_index))
@@ -128,16 +138,28 @@ BOARDS = {
         "U10 needs a clear optical window; no coverlay over its aperture",
         "D1-D4 are 850 nm: the camera on J11 must be a NoIR variant",
     ]),
-    "taxels": ("taxel_netlist", "smartbag_taxels", [
-        "printed force-sensing sheet, 16 columns x 6 rows",
-        "columns on F.Cu, rows on B.Cu, FSR ink between them",
-        "no components: this board is electrodes and one connector",
-    ]),
 }
+
+# ⛔ "taxels" IS NOT IN BOARDS, AND THAT IS THE POINT. It used to be, and this
+# file will happily produce a smartbag_taxels.kicad_pcb from it: a legal board
+# with the right outline, the right connector and NONE OF THE 1155 COPPER SHAPES
+# that are the entire reason the sheet exists. It overwrote the real one, and
+# what gave it away was a single unconnected pad — the only visible trace of 96
+# missing sensors.
+#
+# ⭐ The taxel sheet is built by generate_taxels.py, which calls build() here and
+# then injects the electrodes. Two entry points for one board is a trap, so the
+# wrong one now refuses instead of silently succeeding.
+DELEGATED = {"taxels": "hardware/generate_taxels.py"}
 
 
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "optics"
+    if which in DELEGATED:
+        sys.exit(f"{which!r} is not built here — run {DELEGATED[which]}. "
+                 "This generator would write a board with no electrodes on it.")
+    if which not in BOARDS:
+        sys.exit(f"unknown board {which!r}; known: {', '.join(BOARDS)}")
     mod, stem, notes = BOARDS[which]
     nl = importlib.import_module(mod)
     out = os.path.join(HERE, f"{stem}.kicad_pcb")

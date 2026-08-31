@@ -31,9 +31,9 @@ STEP = 0.35
 # bends does not stay soldered. The islands are the only legal ground, and the
 # 1.0 mm inset is the copper-to-edge rule with room for a courtyard.
 ISLANDS = [
-    (-97.0, -79.0, -9.0, 9.0),      # left rigid island: the first radar
-    (-47.0,  47.0, -9.0, 9.0),      # centre: processor, power, FSR front end
-    ( 79.0,  97.0, -9.0, 9.0),      # right rigid island: the second radar
+    (-97.0, -85.0, -9.0, 9.0),      # left rigid island: the first radar
+    (-61.0,  61.0, -9.0, 9.0),      # centre: processor, power, radio, FSR
+    ( 85.0,  97.0, -9.0, 9.0),      # right rigid island: the second radar
 ]
 
 
@@ -75,6 +75,101 @@ def _box_for(ref, lib, fp, footprint_text, rotation):
     return x0, x1, y0, y1
 
 
+FIDUCIAL_SYMBOL = "FIDUCIAL"
+# ⚠️ A fiducial's courtyard in the KiCad library is barely wider than its 1 mm
+# pad, which is true of the part and useless as a placement rule: what has to
+# stay clear is the 2 mm soldermask window the camera looks through. Same number
+# as generate_pcb.fiducial_keepout, and for the same reason.
+FID_COURTYARD = 2.0
+FID_GRID = 0.25        # mm, the search step for a clear spot
+FID_SEARCH = 6.0       # mm, how far a fiducial may be nudged from its intent
+FID_WANT = 0.6         # mm, clearance past which more room stops being better
+
+
+def _clearance(box, at, others):
+    """Smallest gap between a courtyard placed at `at` and any of `others`.
+
+    Negative when they overlap, which is how the search rejects a candidate
+    without a separate collision test.
+    """
+    x0, x1, y0, y1 = box
+    ax0, ax1, ay0, ay1 = at[0] + x0, at[0] + x1, at[1] + y0, at[1] + y1
+    worst = float("inf")
+    for bx0, bx1, by0, by1 in others:
+        gap = max(bx0 - ax1, ax0 - bx1, by0 - ay1, ay0 - by1)
+        worst = min(worst, gap)
+    return worst
+
+
+def place_fiducials(fids, boxes, pos, home, occupied):
+    """Settle each fiducial near where the netlist asked for it, but in the clear.
+
+    ⛔ A FIDUCIAL IS NOT AN ORDINARY PART AND MUST NOT BE RELAXED LIKE ONE. It
+    has no net and no neighbour it wants to be near, so the push-apart loop —
+    which only knows how to move things a third of a millimetre at a time —
+    spends its rounds shoving a fiducial between two capacitors that have
+    nowhere to go, and stalls with it still on top of one. That is exactly what
+    happened: FID4 ended up inside C23's courtyard and FID5 inside C33's.
+
+    ⛔ AND IT MUST NOT SIMPLY BE PUT WHERE THERE IS THE MOST ROOM. That was the
+    first repair, and it was worse: told to maximise clearance, the search
+    emptied all five fiducials onto the two end islands and left three of them
+    in a row 3 mm apart. Three collinear marks tell a placement camera about one
+    axis. Where a fiducial goes is a DECISION — diagonally opposite corners, one
+    pair per rigid island, because the flex tails let the islands move relative
+    to each other and a machine that locates one island has learned nothing
+    about the next.
+
+    ⭐ So the netlist states the intent and this only nudges: search a window
+    around the requested point, and among positions with enough room prefer the
+    one closest to what was asked for. Clearance past FID_WANT buys nothing —
+    a fiducial with 4 mm of space is not better placed than one with 1 mm, it is
+    just somewhere else.
+    """
+    placed, exiled = {}, []
+
+    def search(ref, hx, hy, reach):
+        ix0, ix1, iy0, iy1 = ISLANDS[home[ref]]
+        x0, x1, y0, y1 = boxes[ref]
+        lo_x, hi_x = max(ix0 - x0, hx - reach), min(ix1 - x1, hx + reach)
+        lo_y, hi_y = max(iy0 - y0, hy - reach), min(iy1 - y1, hy + reach)
+        best, best_key = None, None
+        cx = lo_x
+        while cx <= hi_x + 1e-9:
+            cy = lo_y
+            while cy <= hi_y + 1e-9:
+                gap = min(_clearance(boxes[ref], (cx, cy), occupied), FID_WANT)
+                key = (gap, -((cx - hx) ** 2 + (cy - hy) ** 2))
+                if best_key is None or key > best_key:
+                    best_key, best = key, (cx, cy)
+                cy += FID_GRID
+            cx += FID_GRID
+        return best, best_key[0]
+
+    for ref in fids:
+        hx, hy = pos[ref]
+        best, gap = search(ref, hx, hy, FID_SEARCH)
+        # ⛔ NEVER SETTLE FOR AN OVERLAP. The window says where the fiducial
+        # BELONGS; it does not promise the room exists. FID4 was asked for the
+        # top-right corner of the centre island, which is where the multiplexer
+        # is, and within six millimetres of there every candidate still sat
+        # inside U7's courtyard. A placement that merely "did its best" would
+        # hand that to DRC as a courtyard violation, which is how the previous
+        # two got through. Widening to the whole island is a worse position and
+        # a correct board, and the compromise is reported rather than hidden.
+        if gap < 0:
+            best, gap = search(ref, hx, hy, float("inf"))
+            exiled.append((ref, ((best[0] - hx) ** 2 + (best[1] - hy) ** 2) ** 0.5))
+        x0, x1, y0, y1 = boxes[ref]
+        pos[ref] = [round(best[0], 3), round(best[1], 3)]
+        placed[ref] = tuple(pos[ref])
+        occupied.append((best[0] + x0, best[0] + x1, best[1] + y0, best[1] + y1))
+    for ref, dist in exiled:
+        print(f"    ⚠️  {ref} had no room where it was asked for; moved "
+              f"{dist:.1f} mm across its island")
+    return placed
+
+
 def relax(parts, footprint_text, rounds=600, rotation=None):
     """parts: [(ref, ..., fp_lib, fp, pins, x, y)] -> {ref: (x, y)}.
 
@@ -83,15 +178,20 @@ def relax(parts, footprint_text, rounds=600, rotation=None):
     rotation = rotation or {}
     boxes = {}
     pos = {}
-    for ref, _v, _s, lib, fp, _pins, x, y in parts:
+    fids = []
+    for ref, _v, sym, lib, fp, _pins, x, y in parts:
         boxes[ref] = _box_for(ref, lib, fp, footprint_text, rotation)
         pos[ref] = [float(x), float(y)]
+        if sym == FIDUCIAL_SYMBOL:
+            h = FID_COURTYARD / 2
+            boxes[ref] = (-h, h, -h, h)
+            fids.append(ref)
     start = {r: tuple(p) for r, p in pos.items()}
-    refs = [p[0] for p in parts]
+    refs = [p[0] for p in parts if p[0] not in set(fids)]
     # ⚠️ An island is chosen ONCE, from the hint, and never revised. Letting the
     # relaxation migrate a part between islands would move a decoupling
     # capacitor 160 mm away from the pin it decouples and call it progress.
-    home = {r: island_for(*pos[r]) for r in refs}
+    home = {r: island_for(*pos[r]) for r in refs + fids}
 
     def extent(ref):
         x0, x1, y0, y1 = boxes[ref]
@@ -139,6 +239,14 @@ def relax(parts, footprint_text, rounds=600, rotation=None):
         if not moved:
             break
 
+    if fids:
+        place_fiducials(fids, boxes, pos, home,
+                        [(pos[r][0] + boxes[r][0], pos[r][0] + boxes[r][1],
+                          pos[r][1] + boxes[r][2], pos[r][1] + boxes[r][3])
+                         for r in refs])
+    # ⚠️ Fiducials are excluded from the displacement report on purpose: they are
+    # placed, not nudged, so "how far did it move" says nothing about whether
+    # the floorplan is sound — which is the only question that number answers.
     worst = max((abs(pos[r][0] - start[r][0]) ** 2
                  + abs(pos[r][1] - start[r][1]) ** 2) ** 0.5 for r in refs)
     return {r: (round(p[0], 3), round(p[1], 3)) for r, p in pos.items()}, worst

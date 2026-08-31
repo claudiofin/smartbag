@@ -27,6 +27,8 @@ sys.path.insert(0, os.path.join(ROOT, "hardware"))
 import generate_pcb as pcb          # noqa: E402
 import netlist as nl                # noqa: E402
 import place as pl                  # noqa: E402
+import optics_netlist as onl        # noqa: E402
+import taxel_netlist as tnl         # noqa: E402
 
 FAILURES = []
 
@@ -262,15 +264,47 @@ check("the FFC has a way for every line plus a ground",
       f"{d.FSR_COLS} cols + {d.FSR_ROWS} rows + GND = {_ways} "
       f"into a {d.FSR_FFC_WAYS}-way connector")
 
+print("\n── the two new boards fit the things they go inside")
+# ⛔ THE OPTICS FLEX AND THE TAXEL SHEET WERE NEVER CHECKED AGAINST THE BAG. The
+# insert board has been measured against the collar since early on; the other
+# two arrived later and nothing looked at them. A board that does not fit is not
+# a DRC problem — DRC is delighted by a board of any size — it is this file's.
+_ow = max(x for x, _ in onl.OUTLINE) - min(x for x, _ in onl.OUTLINE)
+_oh = max(y for _, y in onl.OUTLINE) - min(y for _, y in onl.OUTLINE)
+check("the optics flex fits across the insert",
+      _ow <= d.INS_W, f"{_ow:.0f} mm strip in a {d.INS_W:.0f} mm insert")
+check("the optics flex fits inside the collar band",
+      _oh <= d.INS_COLLAR_H,
+      f"{_oh:.0f} mm tall against a {d.INS_COLLAR_H:.0f} mm collar")
+
+# ⭐ The optics positions live in dimensions.py because the renders, the CAD and
+# this board all have to agree about where the camera is pointing. Assert the
+# board actually used them rather than a copy that has drifted.
+for _ref, _want in (("U10", d.TOF_X), ("J11", d.CAMERA_X)):
+    _got = onl.part(_ref)[6]
+    check(f"{_ref} sits where dimensions.py puts it",
+          abs(_got - _want) < 0.01, f"board {_got} vs dimensions {_want}")
+_led_x = sorted(onl.part(f"D{i + 1}")[6] for i in range(len(d.LED_X)))
+check("the illuminators sit where dimensions.py puts them",
+      _led_x == sorted(d.LED_X), f"{_led_x} vs {sorted(d.LED_X)}")
+
+# ⚠️ Every part on the optics flex has to be inside its own outline too — the
+# LEDs are placed from dimensions.py, which knows nothing about this board.
+_ox0, _ox1 = min(x for x, _ in onl.OUTLINE), max(x for x, _ in onl.OUTLINE)
+_off = [p[0] for p in onl.PARTS if not (_ox0 + 2 <= p[6] <= _ox1 - 2)]
+check("every optics part is on the optics board", not _off, str(_off))
+
+_tw = max(x for x, _ in tnl.OUTLINE) - min(x for x, _ in tnl.OUTLINE)
+check("the taxel sheet's sensing area is the insert floor",
+      _tw >= d.INS_W and _tw <= d.INS_W + 20,
+      f"{_tw:.0f} mm wide against a {d.INS_W:.0f} mm floor")
+
 print("\n── the three boards agree about the cables between them")
 # ⛔ A FLEX CABLE IS A PROMISE BETWEEN TWO FILES. J1 on the insert board and J10
 # on the optics flex are the two ends of one cable; so are J4 and J20. Nothing
 # stops somebody inserting a pin on one end and not the other, and the failure
 # mode is not subtle — it puts VSYS into an interrupt input. These are declared
 # in different modules precisely so they can be compared.
-import optics_netlist as onl                                    # noqa: E402
-import taxel_netlist as tnl                                     # noqa: E402
-
 for a_mod, a_ref, b_mod, b_ref, cable in (
         (nl, "J1", onl, "J10", "insert to optics"),
         (nl, "J4", tnl, "J20", "insert to taxels")):
@@ -345,6 +379,49 @@ check("the firmware's margin matches thermal/budget.py",
 check("the closed-bag charge ceiling matches what the model allows",
       abs(_cdef("SB_CHG_SLOW_MW") - _safe_w * 1000) < 100,
       f"firmware {_cdef('SB_CHG_SLOW_MW')} mW vs model {_safe_w * 1000:.0f} mW")
+
+print("\n── the pictures are not older than what they show")
+# ⛔ NOTHING HAS EVER CHECKED THIS, and it is the easiest way for a repository to
+# start lying. A render is a claim about a design at a moment; the design moved
+# on — three boards where there was one, an antenna keepout, wider flex tails,
+# a whole optics flex — and the images kept showing the old one, confidently,
+# with no warning anywhere. A stale picture is worse than no picture because it
+# looks like evidence.
+#
+# ⚠️ It compares modification times, which is crude and occasionally wrong (a
+# touched file, a fresh clone). Crude and noisy beats absent: the failure mode
+# it catches is "somebody changed the board and forgot", which is the one that
+# actually happens.
+_SHOWS = {
+    "render/views/hero.png": ["cad/bag_and_insert.py", "dimensions.py",
+                              "render/scenes.py"],
+    "render/views/section.png": ["cad/bag_and_insert.py", "dimensions.py",
+                                 "render/scenes.py",
+                                 "hardware/smartbag_core.kicad_pcb"],
+    "render/views/collar.png": ["dimensions.py", "render/scenes.py",
+                                "hardware/optics_netlist.py"],
+    "render/views/exploded.png": ["cad/bag_and_insert.py", "dimensions.py",
+                                  "render/scenes.py",
+                                  "hardware/smartbag_core.kicad_pcb"],
+    "media/smartbag.mp4": ["render/animation.py", "render/scenes.py",
+                           "dimensions.py"],
+    "media/smartbag_sequence.mp4": ["render/animation.py", "render/scenes.py",
+                                    "dimensions.py"],
+}
+_stale = []
+for _art, _srcs in _SHOWS.items():
+    _ap = os.path.join(ROOT, _art)
+    if not os.path.exists(_ap):
+        _stale.append(f"{_art} (missing)")
+        continue
+    _at = os.path.getmtime(_ap)
+    for _s in _srcs:
+        _sp = os.path.join(ROOT, _s)
+        if os.path.exists(_sp) and os.path.getmtime(_sp) > _at:
+            _stale.append(f"{_art} < {_s}")
+            break
+check("every render is newer than the files it depicts", not _stale,
+      "; ".join(_stale))
 
 print("\n── the film agrees with the model")
 # ⛔ The bug the video showed: the dropped object landed at x = 44, on top of

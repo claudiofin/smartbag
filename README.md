@@ -24,7 +24,7 @@ been built.
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
 | board | **94 parts, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. 10 pads of 480 still need finishing by hand — see [Routing](#routing). |
-| part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **18 of 18 agree** — see [The bill of materials](#the-bill-of-materials). |
+| part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **23 of 23 agree** — see [The bill of materials](#the-bill-of-materials). |
 | firmware | the wake-up chain, the ledger, the taxel driver, the GATT layer, **the charge policy and the sensor bring-up** — **690 assertions**, `-Werror`. What is left is nine HAL functions and a vendor BLE stack, and they are named. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). ⚠️ It now has to run on a Cortex-M33, not an NPU. |
@@ -50,7 +50,7 @@ Run everything that can be checked:
 == ERC ==                  0 violations
 == DRC ==                  0 errors · 4 unconnected pads · 0 footprint errors
 == the other two boards == optics 0 errors, 2 pads · taxels 0 errors, 0 pads
-== BOM vs footprints ==    22 of 22 named parts have a real MPN whose package fits
+== BOM vs footprints ==    23 of 23 named parts have a real MPN whose package fits
 == recognition ==          ⭐ IT FITS, AND WITH ROOM
 == physics ==              ✅ the 60 GHz feed question is settled
                            ⛔ Charging as specified puts the cell over its limit.
@@ -356,12 +356,30 @@ camera interface — the ones with an NPU are BGAs with no radio, the ones with 
 radio have no NPU. The processor is an **nRF54L15**, a 128 MHz Cortex-M33, and
 recognition has to run on it. That is survivable only because the firmware
 already waits 2 s for an object to settle before measuring, so inference happens
-inside a window that existed anyway. It has not been benchmarked on that part.
+inside a window that existed anyway.
 
-**91 parts. 18 named, 72 passives, one thermistor.** The floorplan lives in one
-block in `netlist.py`; `hardware/place.py` turns it into positions whose
-courtyards do not intersect, because 91 hand-typed coordinates always collide
-somewhere — the first pass collided in 28 places.
+⭐ **And it has now been counted rather than hoped for.**
+[`ml/inference_budget.py`](ml/inference_budget.py) hooks the model and adds up
+its multiply-accumulates instead of guessing: **6.99 M MACs**, which is 110–191
+ms on a 128 MHz M33 with CMSIS-NN depending on how many cycles per MAC you are
+willing to believe. The settle window is 2000 ms. The margin is an order of
+magnitude, which is the only reason losing the NPU was survivable.
+
+**111 footprints: 23 named parts, 82 passives, 6 fiducials.** The floorplan lives
+in one block in `netlist.py`; [`hardware/place.py`](hardware/place.py) turns it
+into positions whose courtyards do not intersect, because a hundred hand-typed
+coordinates always collide somewhere — the first pass collided in 28 places.
+
+⚠️ **The fiducials are placed by a different rule from everything else**, and
+finding that out cost thirteen DRC violations. A fiducial has no net and no
+neighbour it wants to be near, so the push-apart loop has nothing to work with:
+it shoved two of them into capacitors and stalled. Telling it to maximise
+clearance instead was worse — it emptied every fiducial onto the least crowded
+island and left three in a row, and three collinear marks tell a placement
+camera about one axis. They are a **decision**: two per rigid island, diagonally
+opposite, because the flex tails let the islands move with respect to each other
+and a machine that has located one has learned nothing about the next. The
+search only nudges them off whatever they landed on.
 
 ⛔ **Nothing sits on the flex.** The board is a 196 mm strip with two tails in it,
 and a package soldered across a section that bends does not stay soldered. An
@@ -506,8 +524,23 @@ headroom less 5 K of margin allows 433 mW of loss, so **2.2 W in, not 5** — 2.
 slower, about five hours for a full charge. Cheaper still, and free: the firmware
 already knows when the bag is open, so charge only then.
 
-⚠️ Neither is implemented. There is no charge control in the firmware and no cell
-thermistor on the board.
+✅ **Both are implemented now**, and the fix went further than the analysis asked.
+[`firmware/sb_power.c`](firmware/sb_power.c) holds the policy — full current only
+with the bag **open** and the cell between 10 and 40 °C, 2.2 W otherwise, and
+nothing at all if the thermistor reads open-circuit — under **264 host
+assertions**, including a sweep over every cell temperature with the bag shut.
+
+⛔ **And the thermistor moved off the board.** It was a 0402 NTC beside the PMIC,
+which measures the PMIC: the cell whose temperature the entire policy is about is
+twenty millimetres of foam away. It is now the third pin of the battery
+connector, in the pack, where the nPM1300's datasheet calls it *the battery
+thermistor* — so [`J2`](hardware/bom.py) is a 3-way SM03B-SRSS-TB and not the
+2-way part it was. A pull-up resistor went with it: the PMIC's measurement is
+ratiometric against its own reference, and a second pull-up to VSYS corrupts it.
+
+⚠️ The number above is still what the hardware does **unconfigured**, and it is
+kept for that reason — it is true on the first boot, before anything writes to
+the PMIC. A limit is only real once somebody has set it.
 
 ```bash
 python3 thermal/budget.py
@@ -567,9 +600,9 @@ tools/fetch_datasheets.sh       # the PDFs are not committed — see below
 python3 tools/bom_report.py     # writes hardware/bom.csv
 ```
 
-**18 of 18 named parts agree with their datasheets**, and the three that did not
+**23 of 23 named parts agree with their datasheets**, and the three that did not
 were fixed by changing the board, not the spreadsheet — see [the
-rebuild](#the-board-rebuilt-around-parts-you-can-buy). Plus 72 passives, whose
+rebuild](#the-board-rebuilt-around-parts-you-can-buy). Plus 82 passives, whose
 values are read out of `netlist.py` rather than kept in a second list that can
 drift.
 
