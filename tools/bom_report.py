@@ -38,16 +38,21 @@ DS = os.path.join(ROOT, "hardware", "datasheets")
 
 
 def footprint_text(lib, fp):
-    return open(os.path.join(FP_LIB, f"{lib}.pretty", f"{fp}.kicad_mod")).read()
+    return open(pcb.footprint_path(lib, fp)).read()
 
 
 def measure(lib, fp):
     """(electrical pins, courtyard x, courtyard y) of a footprint, in mm."""
     t = footprint_text(lib, fp)
-    numbers = set()
-    for num in re.findall(r'\(pad "([^"]*)" ', t):
-        if num.isdigit():
-            numbers.add(int(num))
+    # ⚠️ NOT `isdigit()`. That was the second version of this check and it
+    # scored the A121 at zero pins: a BGA's pads are named A1, K9, J10, and a
+    # rule written for QFNs quietly reports the part as empty rather than as
+    # wrong. Distinct pad NAMES, minus the mechanical ones a datasheet never
+    # counts as pins — thermal sub-pads share a name and collapse to one, which
+    # is the behaviour that made this check worth writing in the first place.
+    MECHANICAL = {"", "MP", "SH", "MP1", "MP2", "NC"}
+    numbers = {n for n in re.findall(r'\(pad "([^"]*)" ', t)
+               if n not in MECHANICAL}
     pts = [(float(a), float(b))
            for m in re.finditer(
                r'\(fp_(?:line|rect|poly)\b(.*?)\(layer "F\.CrtYd"', t, re.S)
@@ -128,9 +133,13 @@ def main():
         for r in noted:
             print(f"     {r['ref']:4} {r['availability']}")
 
-    print(f"\n  {len(bom.PASSIVES)} passive groups, generic on purpose:")
-    for _k, (desc, pkg, refs) in sorted(bom.PASSIVES.items()):
-        print(f"     {pkg:5} {desc:34} {' '.join(refs)}")
+    groups = bom.passives()
+    count = sum(len(refs) for _pkg, refs in groups.values())
+    print(f"\n  {count} passives in {len(groups)} distinct values, "
+          "derived from the netlist:")
+    for value, (pkg, refs) in groups.items():
+        shown = " ".join(refs[:6]) + (f" +{len(refs) - 6} more" if len(refs) > 6 else "")
+        print(f"     {pkg:14} {value:22} x{len(refs):<3} {shown}")
 
     if problems:
         print(f"\n⛔ {len(problems)} parts the board cannot accept as drawn:\n")

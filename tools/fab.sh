@@ -40,6 +40,18 @@ python3 tools/bom_report.py > "$OUT/bom-report.txt"
 cp hardware/bom.csv "$OUT/smartbag-bom.csv"
 echo "  smartbag-bom.csv + bom-report.txt"
 
+echo "== the checks, shipped with the artwork =="
+# ⛔ THE DRC REPORT GOES IN THE PACKAGE. A fabricator cannot tell a board that
+# passes from one that does not, and neither can anyone reading a zip file six
+# months from now. Saying "0 violations, 3 unconnected pads" in a note is a
+# claim; shipping the report is evidence.
+kicad-cli pcb drc --schematic-parity --severity-all \
+  -o "$OUT/drc-report.txt" "$BOARD" >/dev/null 2>&1 || true
+kicad-cli sch erc --severity-all -o "$OUT/erc-report.txt" \
+  hardware/smartbag_core.kicad_sch >/dev/null 2>&1 || true
+grep -E "Found .* (violations|unconnected pads|Footprint errors)" "$OUT/drc-report.txt" \
+  | sed 's/^\*\* /  /;s/ \*\*$//'
+
 echo "== stats =="
 kicad-cli pcb export stats --output "$OUT/board-stats.txt" "$BOARD" >/dev/null 2>&1 || true
 

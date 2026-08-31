@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "SmartBag")(type "KiCad")(uri "${KIPRJMOD}/footprints/SmartBag.pretty")(options "")(descr "Footprints generated from datasheets"))
+)

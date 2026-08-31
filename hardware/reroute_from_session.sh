@@ -12,3 +12,4 @@ KPY="${KICAD_PYTHON:-/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.fr
 python3 hardware/generate_pcb.py | tail -1
 "$KPY" hardware/specctra.py import hardware/smartbag_core.kicad_pcb hardware/smartbag_core.ses | tail -1
 "$KPY" hardware/fill_zones.py hardware/smartbag_core.kicad_pcb | tail -1
+"$KPY" hardware/stitch.py hardware/smartbag_core.kicad_pcb | tail -1

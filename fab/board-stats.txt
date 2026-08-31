@@ -1,6 +1,6 @@
 PCB statistics report
 =====================
-- Date: Sunday, August 30, 2026 at 05:52:47 PM
+- Date: Monday, August 31, 2026 at 10:03:08 AM
 - Project: smartbag_core
 - Board name: smartbag_core
 
@@ -8,22 +8,22 @@ Board
 -----
 - Width: 196.0000 mm
 - Height: 20.0000 mm
-- Area: 3200.00 mm²
-- Front copper area: 2982.774 mm²
-- Back copper area: 3078.775 mm²
+- Area: 3560.00 mm²
+- Front copper area: 3210.905 mm²
+- Back copper area: 3074.441 mm²
 - Min track clearance: 0.1008 mm
 - Min track width: 0.1000 mm
-- Min drill diameter: 0.1500 mm
+- Min drill diameter: 0.1000 mm
 - Board stackup thickness: 0.6000 mm
 
-- Front footprint area: 534.458 mm²
+- Front footprint area: 847.969 mm²
 - Back footprint area: 0.00 mm²
-- Front component density: 16.70 %
+- Front component density: 23.82 %
 - Back component density: 0.00 %
 Pads
 ----
 - Through hole: 0
-- SMD: 240
+- SMD: 481
 - Connector: 0
 - NPTH: 0
 - Castellated: 0
@@ -31,7 +31,7 @@ Pads
 
 Vias
 ----
-- Through vias: 204
+- Through vias: 393
 - Blind vias: 0
 - Buried vias: 0
 - Micro vias: 0
@@ -42,15 +42,13 @@ Components
 |              | Front Side | Back Side | Total |
 |--------------|------------|-----------|-------|
 |THT:          |          0 |         0 |     0 |
-|SMD:          |         26 |         0 |    26 |
+|SMD:          |         91 |         0 |    91 |
 |Unspecified:  |          0 |         0 |     0 |
-|Total:        |         26 |         0 |    26 |
+|Total:        |         91 |         0 |    91 |
 
 Drill holes
 -----------
 
 | Count | Shape |    X Size |    Y Size | Plated | Via/Pad | Start Layer | Stop Layer |
 |-------|-------|-----------|-----------|--------|---------|-------------|------------|
-|    92 | Round | 0.1500 mm | 0.1500 mm |    PTH |     Via |        F.Cu |       B.Cu |
-|    90 | Round | 0.2000 mm | 0.2000 mm |    PTH |     Via |        F.Cu |       B.Cu |
-|    22 | Round | 0.2500 mm | 0.2500 mm |    PTH |     Via |        F.Cu |       B.Cu |
+|   393 | Round | 0.1000 mm | 0.1000 mm |    PTH |     Via |        F.Cu |       B.Cu |

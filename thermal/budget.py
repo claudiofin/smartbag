@@ -165,9 +165,17 @@ def main():
               "loop,")
         print("          which is what a shipping product would do anyway.")
         print()
-        print("      ⚠️ None of these are implemented. The firmware has no "
-              "charge")
-        print("      control and the board has no cell thermistor.")
+        print("      ⭐ THE BOARD NOW HAS THE MEANS. RT1 is a 10k NTC on the "
+              "cell and")
+        print("      U3 is an nPM1300, which reads it and applies the JEITA "
+              "profile in")
+        print("      hardware — this analysis is why both are there. What is "
+              "still")
+        print("      missing is the POLICY: nothing has told the PMIC what "
+              "ceiling to")
+        print("      hold, and the firmware has no charge control at all.")
+        print("      ⚠️ So the number above is what happens if nobody "
+              "configures it.")
     else:
         print(f"   Cell stays at {cell_temp:.0f} C, inside its window.")
 

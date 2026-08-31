@@ -40,7 +40,10 @@ POWER_NETS = {"VDD_3V3", "VDD_1V8", "VBAT", "VQI", "SW1", "SW2"}
 
 
 def _footprint(fp_lib, lib, fp):
-    return open(os.path.join(fp_lib, f"{lib}.pretty", f"{fp}.kicad_mod")).read()
+    """⚠️ Local footprints first — see generate_pcb.footprint_path. The A121 is
+    the one part on this board with no stock footprint anywhere."""
+    import generate_pcb
+    return open(generate_pcb.footprint_path(lib, fp)).read()
 
 
 def pad_positions(fp_lib, parts):

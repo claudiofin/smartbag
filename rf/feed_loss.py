@@ -80,13 +80,21 @@ def losses(h_mm):
     return w_mm, e, a_d / 100.0, a_c / 100.0      # dB/cm
 
 
+# ⛔ THESE COORDINATES ARE HISTORY, AND THEY ARE HARDCODED ON PURPOSE. This
+# script used to read the transceiver's position out of netlist.py. Then the
+# analysis below did its job: the architecture it describes was abandoned, the
+# transceiver became two sensors at the ends of the board, and the script
+# started measuring the distance between a part and an island that no longer
+# exists — 169 mm, a number about nothing. An analysis of a design that has been
+# replaced has to remember the design it was about, or it silently becomes a
+# measurement of the present with the conclusions of the past attached.
+TRANSCEIVER_X = -6.0          # the single central transceiver, as drawn in v1
+ISLAND_X = {"ANT_A1": -93.5, "ANT_A2": 81.5}
+
+
 def feed_lengths():
-    """Straight-line distance from the transceiver to each antenna island."""
-    _r, _v, _s, _l, _f, pins, ux, uy = nl.part("U2")
-    out = {}
-    for net, x_island in (("ANT_A1", -93.5), ("ANT_A2", 81.5)):
-        out[net] = abs(x_island - ux)
-    return out
+    """Straight-line distance from the central transceiver to each island."""
+    return {net: abs(x - TRANSCEIVER_X) for net, x in ISLAND_X.items()}
 
 
 def main():

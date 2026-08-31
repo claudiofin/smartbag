@@ -71,10 +71,29 @@ def a121():
            'antenna in package. Transcribed from datasheet v1.8 sections 3 and 9.")',
            '\t(tags "acconeer a121 radar 60GHz fcCSP BGA AiP")',
            '\t(attr smd)',
-           '\t(property "Reference" "U**" (at 0 -4.2 0) (layer "F.SilkS")'
+           # ⚠️ Hidden in the library copy too. generate_pcb.py hides the
+           # designator on every placed part — a 20 mm-tall board cannot carry
+           # 91 of them in silkscreen — and a placed footprint that differs from
+           # its library copy is reported by DRC as a mismatch. Hiding it in
+           # both places makes the two identical, which is what the check is
+           # actually asking about.
+           '\t(property "Reference" "REF**" (at 0 -4.2 0) (layer "F.SilkS")'
+           ' (hide yes)'
            ' (uuid "a121-ref") (effects (font (size 1 1) (thickness 0.15))))',
            '\t(property "Value" "A121" (at 0 4.2 0) (layer "F.Fab")'
-           ' (uuid "a121-val") (effects (font (size 1 1) (thickness 0.15))))']
+           ' (uuid "a121-val") (effects (font (size 1 1) (thickness 0.15))))',
+           # ⚠️ Datasheet, Description and the two flags below are not
+           # decoration. KiCad adds them to every footprint it saves, and then
+           # compares the placed copy against the library file field by field —
+           # so a library footprint that lacks them is reported as "does not
+           # match copy in library" on every DRC run, for the rest of the
+           # project's life, over four fields nobody wrote.
+           '\t(property "Datasheet" "" (at 0 0 0) (layer "F.Fab") (hide yes)'
+           ' (uuid "a121-ds") (effects (font (size 1.27 1.27))))',
+           '\t(property "Description" "" (at 0 0 0) (layer "F.Fab") (hide yes)'
+           ' (uuid "a121-desc") (effects (font (size 1.27 1.27))))',
+           '\t(duplicate_pad_numbers_are_jumpers no)',
+           '\t(embedded_fonts no)']
 
     # courtyard
     out.append(f'\t(fp_rect (start {-cx} {-cy}) (end {cx} {cy}) '
@@ -105,8 +124,10 @@ def a121():
                    f'(size {A121_PAD} {A121_PAD}) '
                    '(layers "F.Cu" "F.Paste" "F.Mask") '
                    f'(uuid "a121-p{i}"))')
-    out.append(f'\t(model "" (offset (xyz 0 0 0)) (scale (xyz 1 1 1)) '
-               '(rotate (xyz 0 0 0)))')
+    # ⚠️ No (model ...) entry. An empty 3D-model path is not neutral: KiCad
+    # compares a placed footprint against its library copy field by field, and
+    # a model reference that resolves to nothing on one side and something on
+    # the other is reported as a library mismatch.
     out.append(')')
     return "\n".join(out) + "\n"
 

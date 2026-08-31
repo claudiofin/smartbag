@@ -23,15 +23,15 @@ been built.
 | | |
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
-| board | matches the schematic. **DRC: 0 violations, 0 footprint errors.** |
-| routing | **done.** 699 tracks, 204 vias, **DRC: 0 violations**, 6 unconnected pads left of 80 — see [Routing](#routing). |
-| part numbers | **real MPNs, checked against their own datasheets.** 9 of 12 fit the footprint they were drawn for; 3 do not, and those three are the interesting part — see [The bill of materials](#the-bill-of-materials). |
+| board | **91 parts, four layers, routed.** DRC: **0 violations, 0 footprint errors**, schematic parity clean. 3 pads of 462 still need finishing by hand — see [Routing](#routing). |
+| part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **18 of 18 agree** — see [The bill of materials](#the-bill-of-materials). |
 | firmware | the wake-up chain, the ledger, **the taxel driver and the GATT layer** exist and are tested — **405 assertions**, `-Werror`. No RTOS, no vendor BLE stack. |
-| recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). Trained on synthetic renders, so read it as a test of the method, not of the product. |
+| recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). ⚠️ It now has to run on a Cortex-M33, not an NPU. |
 | app | **written and running** — [`app/`](app/), tested against the firmware's own bytes. No native build; it is a web app. |
-| RF | the element is **simulated full-wave**, the feed is closed-form and says the two-island architecture cannot work — and then the parts search **dissolved the problem**: real 60 GHz silicon has the antenna in the package. See [RF](#rf). |
-| thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). Sensing is thermally free; **charging is not** — see [Thermal](#thermal). |
-| the taxel front end | ⛔ **the board cannot read its own matrix unambiguously.** Measured, not asserted — see [The taxel matrix](#the-taxel-matrix). |
+| RF | full-wave simulation rejected the antenna, closed-form analysis then rejected the whole feed — and the real part **dissolved the problem**: 60 GHz silicon has the antenna inside the package. There is now **no 60 GHz copper on this board.** See [RF](#rf). |
+| thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). It asked for charge current to be a function of cell temperature; the board now has an NTC and a PMIC that does exactly that. |
+| the taxel front end | measured wrong, then **fixed in hardware**: six transimpedance amplifiers and a 16:1 multiplexer — see [The taxel matrix](#the-taxel-matrix). |
+| fabrication | Gerbers, drill, placement and a generated fab note: `tools/fab.sh`. ⛔ **The camera module on J1 is still not a chosen part.** |
 
 Run everything that can be checked:
 
@@ -44,16 +44,18 @@ Run everything that can be checked:
 == firmware ==             28 + 324 + 53 checks, 0 failures
 == protocol ==             15 tests passed
 == ERC ==                  0 violations
-== DRC ==                  0 violations · 6 unconnected pads · 0 footprint errors
-== BOM vs footprints ==    9 of 12 named parts have a real MPN whose package fits
-                           ⛔ 3 parts the board cannot accept as drawn
+== DRC ==                  0 violations · 3 unconnected pads · 0 footprint errors
+== BOM vs footprints ==    18 of 18 named parts have a real MPN whose package fits
 == physics ==              ⛔ 8 dB of feed loss makes this architecture unbuildable as drawn.
                            ⛔ Charging as specified puts the cell over its limit.
 ```
 
-⚠️ The last two lines are printed on every run **on purpose**. They are the two
-findings this project produced that nobody has answered yet, and a check suite
-that only printed its passes would be helping to forget them.
+⚠️ The last two lines are printed on every run **on purpose** — and they are now
+the two findings that **rewrote the board**. The feed loss deleted the 60 GHz
+copper and split one transceiver into two sensors; the charging analysis added a
+thermistor and chose the PMIC. They keep printing because the analyses are still
+true about the architectures they describe, and because a suite that only printed
+its passes would be helping to forget why the design looks the way it does.
 
 ## What it is
 
@@ -321,24 +323,69 @@ in [the bill of materials](#the-bill-of-materials).
 python3 rf/feed_loss.py
 ```
 
+## The board, rebuilt around parts you can buy
+
+![the routed board](render/views/board_v2_top.png)
+![the centre island](render/views/board_v2_centre.png)
+
+*Top: the whole 196 mm strip — two rigid end islands carrying a radar each, two
+flex tails, and the centre island. Bottom: the centre island, where the QFN-48
+processor, the QFN-32 PMIC, the taxel front end and the connectors live.*
+
+The first version of this board was drawn from component *classes* — "SoC+NPU
+BLE 5.4", "mmWave 60 GHz TRX" — with pinouts invented to suit. It said so, which
+is better than not saying so, and it was still unbuildable: no real SoC has
+ground on exactly pins 3 and 4. Going and finding the real parts changed the
+architecture three times, and every change had already been asked for by
+something else in this repo.
+
+| what the parts changed | what had asked for it |
+|---|---|
+| **two radars, one on each end island, and no 60 GHz copper at all** | `rf/feed_loss.py` priced a central transceiver's feed at 8.2 dB one way. The Acconeer A121's datasheet then said the antenna is inside the package and *"it is not possible to connect trace antenna"*. The feed does not exist because a real part is placed where its antenna has to be. |
+| **an NTC on the cell, into a PMIC that does JEITA charging** | `thermal/budget.py` put the cell near 60 °C on a 5 W charge against a 45 °C limit and asked for charge current to be a function of cell temperature. The nPM1300 has the input; the invented PMIC had nowhere to put one. |
+| **six transimpedance amplifiers and a 16:1 multiplexer** | `firmware/test_sb_fsr.c` measured both scan modes the old board could run: one invents phantom taxels at 39% of a real press, the other reads real ones 83% light. |
+
+⚠️ **And one thing the parts took away.** No BLE SoC in a QFN has an NPU *and* a
+camera interface — the ones with an NPU are BGAs with no radio, the ones with a
+radio have no NPU. The processor is an **nRF54L15**, a 128 MHz Cortex-M33, and
+recognition has to run on it. That is survivable only because the firmware
+already waits 2 s for an object to settle before measuring, so inference happens
+inside a window that existed anyway. It has not been benchmarked on that part.
+
+**91 parts. 18 named, 72 passives, one thermistor.** The floorplan lives in one
+block in `netlist.py`; `hardware/place.py` turns it into positions whose
+courtyards do not intersect, because 91 hand-typed coordinates always collide
+somewhere — the first pass collided in 28 places.
+
+⛔ **Nothing sits on the flex.** The board is a 196 mm strip with two tails in it,
+and a package soldered across a section that bends does not stay soldered. An
+early placement pass put a 24-way connector and a row of resistors out over a
+tail and off the board edge with them; the placer now knows about the three rigid
+islands and refuses.
+
 ## Routing
 
 **KiCad has no autorouter.** It had one through version 5 and it was removed, so
 the flow is: `pcbnew` writes a Specctra `.dsn`, somebody else's router writes a
-`.ses`, `pcbnew` reads it back. The router here is **Freerouting**, which is a
-maze router with rip-up and retry.
+`.ses`, `pcbnew` reads it back. The router here is **Freerouting**, a maze router
+with rip-up and retry.
 
 ```bash
-tools/route.sh              # generate → DSN → Freerouting → SES → fill → DRC
-hardware/reroute_from_session.sh   # rebuild from the committed .ses, no Java
+tools/route.sh                      # generate → DSN → route → import → stitch → DRC
+hardware/reroute_from_session.sh    # rebuild from the committed .ses, no Java
 ```
 
 | | |
 |---|---|
-| tracks / vias | **699 / 204**, 2 m of copper |
-| DRC | **0 violations, 0 footprint errors** |
-| unconnected | **6 pads**, down from 80 |
-| layers | F.Cu 303 · In2.Cu 334 · B.Cu 22 · **In1.Cu 0 — a solid reference plane** |
+| tracks / vias | **1683 / 393**, 4.0 m of copper |
+| DRC | **0 violations, 0 footprint errors**, schematic parity clean |
+| unconnected | **3 pads of 462** |
+| layers | F.Cu 727 · In2.Cu 844 · B.Cu 112 · **In1.Cu 0 — a solid ground reference** |
+
+⚠️ **The three that are left**: `VDD_3V3` at U1 pin 10, `I2C_SDA` at U3 pin 13,
+and one ground pour island with nowhere to put a via. Freerouting stops
+improving and says so; finishing by hand from there is a normal step and has not
+been done. It is three pads, and they are named rather than rounded away.
 
 ### Three hand-written attempts first, and what they got wrong
 
@@ -347,46 +394,50 @@ wrong, and finding that out was worth more than the attempts were:
 
 | claimed | verdict |
 |---|---|
-| "at 0.4 mm pitch via-in-pad is not optional" | ⛔ **false.** Freerouting connects the board with 204 ordinary vias and no via-in-pad anywhere. |
-| "two layers cannot carry this board" | still true, and still only ever measured on two layers. Three signal layers over a plane carry it comfortably. |
+| "at 0.4 mm pitch via-in-pad is not optional" | ⛔ **false for a QFN** — every pin is on the perimeter and escapes outwards. It is true for a 0.5 mm **BGA**, where four of the A121's signal balls are fully surrounded. Right conclusion, wrong package. |
+| "two layers cannot carry this board" | still true, and still only ever measured on two layers. |
 | "what is missing is a maze router with rip-up and retry" | ⭐ **true**, and the only one that mattered. |
 
-⛔ **And one cause nobody had looked for.** Those attempts were routing to 0.2 mm
-tracks and 0.2 mm clearance — KiCad's *generic netclass default* — because this
-project declared its process **minimums** in the project file and never declared
-what the design actually **uses**. The board is a 0.1 mm process. Half the escape
-problem was self-inflicted and invisible, because DRC cannot complain that
-0.2 mm is too wide when 0.1 mm is merely the floor. It took handing the file to a
-router, which routes to the netclass, for the gap to appear at all.
+⛔ **And one cause nobody had looked for.** Those attempts routed to 0.2 mm tracks
+and clearances — KiCad's *generic netclass default* — because this project
+declared its process **minimums** and never declared what the design **uses**.
+DRC cannot complain that 0.2 mm is too wide when 0.1 mm is merely the floor. It
+took handing the file to a router, which routes to the netclass, for the gap to
+appear.
 
-### Three more things the router found
+### What the router taught this board
 
-- ⛔ **An autorouter given four signal layers will use four signal layers.** The
-  first routed board put **34% of its tracks on In1.Cu** — the layer a comment in
-  `generate_pcb.py` declared was "never routed on" because it is the RF
-  reference plane. A comment is not a rule. Marking the layer `power` in the DSN
-  fixes it, and the price is measured: **two signals stop routing** (`RADAR_IRQ`,
-  `FSR_R2`). That is what a solid plane costs on this board.
+- ⛔ **An autorouter given four signal layers will use four.** The first routed
+  board put 34% of its tracks on In1.Cu — the layer a comment declared was
+  "never routed on". A comment is not a rule. Marking it `power` in the DSN
+  fixes it, and the price was measured: two signals stopped routing.
 - ⛔ **The router has never heard of copper-to-edge clearance.** Specctra's
   boundary *is* the outline, so a via landed 0.120 mm from an edge against a
-  0.150 mm rule. The first fix was to move the via afterwards; it cleared the
-  edge and landed 0.089 mm from a ground pad instead. Nudging copper after the
-  fact just moves a violation somewhere the router is no longer looking. The
-  boundary is now inset by the clearance before the router ever sees it.
-- ⛔ **A thermal spoke wider than its pad connects nothing.** `J1`'s ground
-  fingers are 0.3 mm FFC pads and the zones used 0.4 mm spokes, so no spoke
-  could be drawn and the pads sat isolated in the middle of a ground pour. DRC
-  reported them as unrouted ground, which reads like a routing failure and was a
-  fill setting.
+  0.150 mm rule. The first fix moved the via afterwards; it cleared the edge and
+  landed 0.089 mm from a ground pad instead. **Nudging copper after the fact
+  just moves a violation somewhere the router is no longer looking.** The
+  boundary is now inset before the router ever sees it.
+- ⛔ **A thermal spoke wider than its pad connects nothing.** J1's ground fingers
+  are 0.3 mm and the zones used 0.4 mm spokes, so the pads sat isolated inside a
+  ground pour and DRC reported them as unrouted ground — which reads like a
+  routing failure and was a fill setting.
+- ⭐ **Turning a part is free and turning it matters.** The A121's SPI pins are
+  all on one edge of the ball grid; at 0 degrees that edge faced away from the
+  processor on both sensors and the bus had to wrap around a 0.5 mm package.
+  Rotating each sensor to face the processor took five unconnected pads off the
+  board. ⚠️ Rotating the *processor* the same way looked like the same
+  improvement and made Freerouting's optimiser grind for over an hour twice
+  without producing a file — so it is not rotated, and `netlist.py` says why.
+- ⛔ **A ground pour is not a ground plane until it is stitched.** Routing 1683
+  tracks cut the top pour into islands, and an island with no via in it is not
+  ground, it is a floating sheet of copper. `hardware/stitch.py` runs *after*
+  routing — the islands are made by the routing, so they cannot be found before
+  it — and closed six of the nine remaining unconnected pads.
 
-### What is still unconnected, and why
-
-| net | why |
-|---|---|
-| `ANT_A1`, `ANT_A2` | deliberately not drawn — and with a real part they **should not be nets at all**, see [RF](#rf). |
-| `BLE_ANT` | its 50 Ω feed is **1.4 mm wide** on this stack. Routing it at that width pushes other nets out (measured: 6 violations, 8 unconnected). The antenna is in the wrong place; the trace is not hard to draw. |
-| `RADAR_IRQ`, `FSR_R2` | the price of keeping In1.Cu as a plane, above. |
-| `GND` | the F.Cu pour is split into islands by the routing and two of them are unstitched. |
+  ⚠️ Its first version approximated each track by nine points to test clearance,
+  which leaves 3 mm gaps in the middle of a 26 mm trace; a stitching via landed
+  in one, 0.048 mm from a signal. A track is a segment and the distance to it is
+  a closed form.
 
 ⭐ **The `.ses` is committed.** The routed board is a generated file — generator
 plus routing session — and committing only the board would make the routing
@@ -473,62 +524,89 @@ position, and it read as plausible because 32 mm is a real place.
 
 ## The bill of materials
 
-Until now `netlist.py` named component *classes* — "SoC+NPU BLE 5.4", "mmWave
-60 GHz TRX" — and picked a package that looked plausible for each. ⛔ **That is a
+`netlist.py` used to name component *classes* — "SoC+NPU BLE 5.4", "mmWave
+60 GHz TRX" — and pick a package that looked plausible for each. ⛔ **That is a
 comfortable way to be wrong: a footprint invented to fit an idea always fits.**
 
 [`hardware/bom.py`](hardware/bom.py) names parts you can buy and copies their
 package dimensions out of their own datasheets;
 [`tools/bom_report.py`](tools/bom_report.py) measures what the KiCad footprints
-actually are and prints every disagreement. ```bash
+actually are and prints every disagreement.
+
+```bash
 tools/fetch_datasheets.sh       # the PDFs are not committed — see below
 python3 tools/bom_report.py     # writes hardware/bom.csv
 ```
 
+**18 of 18 named parts agree with their datasheets**, and the three that did not
+were fixed by changing the board, not the spreadsheet — see [the
+rebuild](#the-board-rebuilt-around-parts-you-can-buy). Plus 72 passives, whose
+values are read out of `netlist.py` rather than kept in a second list that can
+drift.
+
+⭐ **The check had to be rewritten twice before it was worth anything**, and both
+mistakes are instructive:
+
+| version | what it did | what it certified |
+|---|---|---|
+| 1 | counted `(pad "...")` records | **passed U2**, the worst mismatch on the board: KiCad splits a QFN-40 thermal pad into nine sub-pads, giving 40 + 9 + 1 = **50 pad records** — exactly the ball count of the 50-ball part it resembles in no other way. |
+| 2 | counted distinct *numeric* pad numbers | scored the A121 at **zero pins**. A BGA's pads are named A1, K9, J10; a rule written for QFNs reports the part as empty rather than as wrong. |
+| 3 | distinct pad **names**, minus mechanical ones | thermal sub-pads share a name and collapse to one, which is the behaviour that made the check worth writing. |
+
+A coincidence in one number is all it takes for a naive check to certify the
+thing it exists to catch.
+
 ⚠️ **The datasheets are not in the repo.** They are third-party copyrighted
 documents: reading one to check a package dimension is ordinary use,
-republishing a vendor's PDF from a public repository is not. `bom.py` carries
-the URL and the numbers read out of each, and the fetch script puts the
-documents back on your disk. Several vendors (Mouser, LCSC, Hirose) serve an
-HTML challenge page to `curl`, so those are reported as failures and left to a
-browser rather than saved as a PDF-named error page.
+republishing a vendor's PDF from a public repository is not. `bom.py` carries the
+URL and the numbers read out of each, and the fetch script puts the documents
+back on your disk. Several vendors (Mouser, LCSC, Hirose) serve an HTML challenge
+page to `curl`, so those are reported as failures and left to a browser rather
+than saved as a PDF-named error page.
 
-**9 of 12 named parts fit.** `BMI270` (LGA-14, 2.5 × 3.0 × 0.83 mm), `DRV5032`
-(SOT-23, 2.92 × 2.37 mm), the crystal, both Hirose FFC connectors, all three JST
-SH headers and the Johanson chip antenna are real parts in the footprints they
-were drawn for. Three are not, and all three are the ICs:
+⛔ **Reading a datasheet is not always reading text.** The nRF54L15's QFN48 pin
+table is split across page breaks in a way no text extractor survives — three
+attempts produced three different wrong pinouts — so the assignment *figure* was
+rasterised and read as an image. The nPM1300's figure is the opposite: numbers
+only, with the names in a table on the next page.
 
-| ref | real part | what breaks |
-|---|---|---|
-| **U2** | Acconeer **A121-001-T&R**, fcCSP50 5.2×5.5 | ⛔ the footprint is a QFN-40 with four antenna ports. The real part has **50 balls and no antenna port at all** — see [RF](#rf). |
-| **U1** | Nordic **nRF54LM20B-QGAA-R7**, QFN52 6×6 0.4 mm | right family, right body, four pins out. ⛔ The harder problem is the **pin budget**: 32 GPIO against 46 signals, 22 of them the FSR matrix alone. |
-| **U3** | Nordic **nPM1300-QEAA-R7**, QFN32 5×5 | footprint is QFN-24 4×4. ⭐ Worth changing anyway: this part has a **battery NTC input and JEITA charge control**, which is exactly what [Thermal](#thermal) says is missing. |
+### What is still missing
 
-⭐ **The check had to be rewritten before it was worth anything.** The first
-version counted `(pad "...")` records — and passed U2, the worst mismatch on the
-board. KiCad splits a QFN thermal pad into nine sub-pads, so a QFN-40 footprint
-holds 40 + 9 + 1 = **50 pad records**, exactly the ball count of the 50-ball part
-it resembles in no other way. A coincidence in one number is all it takes for a
-naive check to certify the thing it exists to catch. It now counts distinct
-numeric pad numbers, and a courtyard *larger* than the body is correct — a
-courtyard is a keep-out, so only one the part would not fit inside is an error.
+- **a camera module** — J1 is the right interface for a small sensor module, but
+  no module is chosen, and until one is, the optical half of the recognition
+  pipeline has no part number;
+- **an NPU** — the SoC is a 128 MHz Cortex-M33 and `ml/classify.py` measured the
+  method, not its runtime on that part;
+- **a tuned antenna match** — L2/C6/C11 are the chip vendor's reference values,
+  and a chip antenna matches against the ground plane around it. This ground
+  plane is not theirs.
 
-### What is missing from the board entirely
+## Fabrication
 
-Each of these is a consequence of something measured elsewhere in this repo:
+```bash
+tools/fab.sh                    # writes fab/
+```
 
-- **a cell thermistor** — the charge current has to be a function of cell
-  temperature ([Thermal](#thermal)), the nPM1300 has the input, the board has
-  nothing to connect to it;
-- **a transimpedance front end for the FSR rows** — six op-amps, or one and a
-  mux ([The taxel matrix](#the-taxel-matrix));
-- **a second processor, or an external matrix driver** — 32 GPIO against 46;
-- **a camera interface** — no BLE-plus-NPU SoC in a QFN offers one.
+Gerbers for all four copper layers (named explicitly — the default set is for a
+two-layer board and would silently drop the inner planes), Excellon drill with
+**PTH and NPTH separate** because a fab that gets them merged plates the mounting
+holes, placement files, the BOM, and a fabrication note generated from the
+project file so it cannot drift from the artwork beside it.
 
-⚠️ Prices and stock are a snapshot from 2026-08-30, not a property of the part:
-the nPM1300 was **$1.66/100 and out of stock at LCSC** that day, and the
-nRF54L15 **$2.72/100 and out of stock**. Where a figure was not verified the
-report says so rather than filling it in.
+⭐ **The DRC and ERC reports ship inside the package.** Saying "0 violations" in a
+note is a claim; shipping the report is evidence, and it is the only way anyone
+opening the zip in six months can tell the difference.
+
+| ⛔ what a quote has to cover | why |
+|---|---|
+| **0.10 mm drills** | the A121's interior balls need a via inside a 0.25 mm land, and 0.25 mm is the largest via that fits. Everything else on the board would have been happy with 0.2 mm. |
+| **filled and capped via-in-pad** (IPC-4761 type VII) | eight vias sit inside BGA lands. Unfilled, the paste drains into the barrel during reflow and the joint starves. |
+| **two dielectric thicknesses** | 0.6 mm rigid islands on polyimide flex. ⭐ The 0.25 mm antenna islands are *gone* — that requirement died with the 60 GHz copper. |
+| **0.05 mm solder mask web** | fine-pitch QFN and 0402 land patterns cannot hold a wider one. Every fab that takes 0.1 mm lines takes it, but it has to be quoted. |
+
+⚠️ **No fiducials, no panelisation, no test points.** 0.5 mm-pitch BGA placement
+without fiducials is not a service anyone will offer; that is the next thing to
+add before a real assembly quote.
 
 ## Firmware
 
@@ -785,6 +863,12 @@ tools/pipeline.sh            the full chain (stills)
 tools/render_animation.sh    the film frames
 tools/render_pcb.sh          board renders only
 hardware/specctra.py         DSN out / SES in, plus the fixes the router needs
+hardware/place.py            a floorplan is a hint; this makes it a placement
+hardware/stitch.py           ties orphaned ground islands back to the plane
+hardware/generate_footprints.py  the one footprint KiCad does not ship
+hardware/footprints/         the A121, transcribed from its datasheet
+tools/fab.sh                 Gerbers, drill, placement, notes and the DRC report
+tools/fab_notes.py           the fab note, generated from the files it describes
 hardware/route.py            ground stitching (the signals go through Freerouting)
 hardware/smartbag_core.ses   the routing session: the board regenerates from it
 hardware/bom.py              real MPNs and their datasheet package dimensions
@@ -846,6 +930,23 @@ macOS / Linux / Windows locations, and can be overridden with
   0.1 m. The dataset camera works at 5–20 cm, so most of every subject was in
   front of the near plane and simply not rendered. It looked exactly like a
   lighting problem, and was chased as one for three attempts.
+
+### BGAs, and reading a datasheet
+
+- **An interior ball on a 0.5 mm BGA cannot escape on the surface.** The land is
+  0.25 mm, the gap to the next land is 0.25 mm, and a 0.1 mm track with 0.1 mm
+  clearance each side needs 0.3 mm. The router does not report this as
+  impossible; it reports four unconnected pads and stops.
+- **A via inside a land has to be smaller than the land.** 0.45/0.25 vias leave
+  no annular ring once the hole is drilled — and KiCad's default
+  `min_via_annular_width` of 0.1 mm silently forbids the only geometry that
+  works, because the rule was never declared.
+- **A pin table split across page breaks is not machine-readable.** Three text
+  extractions of the nRF54L15's QFN48 table produced three different wrong
+  pinouts. Rasterising the figure and reading it as an image took one attempt.
+- **Rotating a part rotates its pad offsets.** Via-in-pad computed from the
+  footprint's own coordinates lands on a different ball once the part is turned
+  — quietly, because a via on the wrong pad is still a legal via.
 
 ### Specctra and autorouters
 

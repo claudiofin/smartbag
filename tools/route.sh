@@ -48,6 +48,11 @@ echo "  kept hardware/smartbag_core.ses"
 echo "== import =="
 "$KPY" hardware/specctra.py import "$BOARD" hardware/smartbag_core.ses | tail -1
 "$KPY" hardware/fill_zones.py "$BOARD" | tail -1
+# ⭐ Stitching has to happen AFTER routing, not before. generate_pcb.py drops a
+# grid of ground vias when there is nothing on the board yet; the islands that
+# matter are the ones the routing itself cuts out of the pour, and those can
+# only be found once the tracks exist.
+"$KPY" hardware/stitch.py "$BOARD" | tail -1
 
 echo "== DRC =="
 kicad-cli pcb drc --schematic-parity --severity-all -o "$WORK/drc.rpt" "$BOARD" \

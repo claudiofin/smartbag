@@ -8,9 +8,13 @@ a footprint invented to fit an idea always fits. This file goes the other way.
 Every entry below is a part you can buy, its package comes from its own
 datasheet, and `verdict` says whether the board as drawn can accept it.
 
-⭐ THE POINT IS THE MISMATCHES. Three of them change the design rather than the
-layout, and one of them dissolves a problem the RF work had already proved was
-fatal. They are the reason this is worth more than a price list.
+⭐ THE MISMATCHES ARE GONE, BECAUSE THE BOARD CHANGED TO MEET THEM. This file
+used to report three parts the board could not accept: an invented QFN for a
+60 GHz transceiver that does not exist in that package, a QFN-24 for a PMIC that
+is QFN-32, and a processor with an NPU that has no camera interface. All three
+findings were acted on rather than annotated — see hardware/netlist.py — and the
+board now carries the parts named here. What the file still does is check, every
+run, that it still does.
 
 ⚠️ Prices and stock are indicative and were true when written (2026-08-30), not
 guaranteed. Where a figure was not verified it is None, and the report says so
@@ -28,23 +32,19 @@ PART = dict
 
 BOM = {
     "U1": PART(
-        mpn="NRF54LM20B-QGAA-R7",
+        mpn="NRF54L15-QFAA-R",
         manufacturer="Nordic Semiconductor",
-        description="Cortex-M33 wireless SoC, Bluetooth LE, Axon NPU, 512 kB RAM",
-        package="QFN52", body=(6.0, 6.0, 0.85), pitch=0.4, pins=52,
-        datasheet="https://www.nordicsemi.com/Products/nRF54LM20B",
-        pdf=None, usd=None, stock="DigiKey lists it; not priced here",
-        verdict="MISMATCH: footprint is QFN-48 6x6. Right family, right body, "
-                "four pins out. ⛔ And the harder problem is the pin budget: "
-                "this part has 32 GPIO and the design asks for 46 signals, 22 "
-                "of them the FSR matrix alone. Either the matrix is "
-                "multiplexed through an external driver or U1 splits in two.",
-        alternatives=[
-            "NRF54L15-QFAA-R — QFN48 6x6 0.4 mm, an EXACT footprint match "
-            "(LCSC C42458750, $3.99/1, $2.72/100, out of stock 2026-08-30), "
-            "but no NPU and no camera interface. Fits the board; does not do "
-            "the job the board was drawn for.",
-        ],
+        description="Cortex-M33 wireless SoC, Bluetooth LE, 1.5 MB NVM, 256 kB RAM",
+        package="QFN48", body=(6.0, 6.0, 0.85), pitch=0.4, pins=48,
+        datasheet="https://www.nordicsemi.com/Products/nRF54L15",
+        pdf="nRF54L15_nordic.pdf", usd=2.72,
+        stock="LCSC C42458750, $3.99/1, $2.72/100, out of stock 2026-08-30",
+        verdict="OK — QFN48 6x6 0.4 mm, and the pin assignment comes from "
+                "figure 173 of the datasheet rather than from an idea of what a "
+                "processor ought to look like. ⚠️ It has NO NPU: recognition "
+                "runs on the M33. That is survivable only because the firmware "
+                "already waits 2 s for the object to settle before measuring, "
+                "so inference happens inside a window that existed anyway.",
     ),
     "U2": PART(
         mpn="A121-001-T&R",
@@ -54,16 +54,23 @@ BOM = {
         datasheet="https://developer.acconeer.com/download/a121-datasheet",
         pdf="A121_acconeer.pdf", usd=None,
         stock="distributor stock not verified",
-        verdict="⛔ MISMATCH, AND IT DISSOLVES THE RF PROBLEM. The footprint is "
-                "a QFN-40 5x5 with TX_A1/TX_A2/RX_A1/RX_A2 antenna ports. The "
-                "real part is a 50-ball fcCSP and its datasheet says, in so "
-                "many words, that the antenna is in the package and 'it is not "
-                "possible to connect trace antenna'. So the 88 mm feed that "
-                "rf/feed_loss.py priced at 8.2 dB one way does not exist in a "
-                "real design — because a real 60 GHz part is placed where its "
-                "antenna has to be. That is option one from feed_loss.py, "
-                "arrived at by the silicon rather than by choice, and it "
-                "deletes ANT_A1 and ANT_A2 from the netlist entirely.",
+        verdict="OK — the footprint is generated ball by ball from the pin "
+                "tables on pages 8-9. ⭐ This part is why there are two radars "
+                "and no 60 GHz copper: its antenna is inside the package and "
+                "the datasheet says a trace antenna cannot be connected, so the "
+                "sensor goes where its antenna has to be.",
+    ),
+    "U6": PART(
+        mpn="A121-001-T&R",
+        manufacturer="Acconeer",
+        description="60 GHz radar, second viewpoint at the other end of the insert",
+        package="fcCSP50", body=(5.2, 5.5, 0.88), pitch=0.5, pins=50,
+        datasheet="https://developer.acconeer.com/download/a121-datasheet",
+        pdf="A121_acconeer.pdf", usd=None,
+        stock="distributor stock not verified",
+        verdict="OK — identical to U2. ⚠️ Two of its fifty balls are fully "
+                "surrounded, so they carry via-in-pad; see the fabrication "
+                "note, because those holes have to be filled and capped.",
     ),
     "U3": PART(
         mpn="NPM1300-QEAA-R7",
@@ -72,129 +79,174 @@ BOM = {
         package="QFN32", body=(5.0, 5.0, 0.9), pitch=0.5, pins=32,
         datasheet="https://download.mikroe.com/documents/datasheets/nPM1300_datasheet.pdf",
         pdf="nPM1300_nordic.pdf", usd=1.66,
-        stock="LCSC C7501206, $1.75/1, $1.66/100, OUT OF STOCK 2026-08-30; "
-              "LCSC lists the package as QFN-32-EP(5x5), which confirms it",
-        verdict="MISMATCH: footprint is QFN-24 4x4. ⭐ Worth the change anyway — "
-                "this part has a battery NTC input and JEITA charge control, "
-                "which is the missing piece thermal/budget.py identified: the "
-                "cell reaches ~60 C on a 5 W charge and the fix is to throttle "
-                "on cell temperature. The board had no thermistor because the "
-                "invented PMIC had nowhere to put one.",
+        stock="LCSC C7501206, $1.75/1, $1.66/100, out of stock 2026-08-30",
+        verdict="OK — QFN32 5x5, pin table page 150. ⭐ RT1 hangs off its NTC "
+                "input, which is the answer thermal/budget.py asked for: the "
+                "charge current has to be a function of cell temperature, and "
+                "this part does that in hardware.",
     ),
     "U4": PART(
-        mpn="BMI270",
-        manufacturer="Bosch Sensortec",
-        description="6-axis IMU, 14-pin LGA",
+        mpn="BMI270", manufacturer="Bosch Sensortec",
+        description="6-axis IMU, 14-pin LGA, I2C",
         package="LGA-14", body=(2.5, 3.0, 0.83), pitch=0.5, pins=14,
         datasheet="https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf",
-        pdf="BMI270_bosch.pdf", usd=None,
-        stock="commodity, widely stocked",
-        verdict="OK — the footprint is Bosch_LGA-14_3x2.5mm_P0.5mm and the "
-                "datasheet says 2.5 x 3.0 mm, 14 pins, 0.83 mm high. Exact.",
+        pdf="BMI270_bosch.pdf", usd=None, stock="commodity, widely stocked",
+        verdict="OK — CSB to VDDIO selects I2C and SDO to ground picks the low "
+                "address, both on the datasheet's instruction (7.2.3).",
     ),
     "U5": PART(
-        mpn="DRV5032FBDBZR",
-        manufacturer="Texas Instruments",
+        mpn="DRV5032FBDBZR", manufacturer="Texas Instruments",
         description="Omnipolar digital Hall latch, 1.65-5.5 V, ~540 nA average",
         package="SOT-23-3", body=(2.92, 2.37, 1.12), pitch=0.95, pins=3,
         datasheet="https://www.ti.com/lit/ds/symlink/drv5032.pdf",
-        pdf="DRV5032_ti.pdf", usd=None,
-        stock="commodity, widely stocked",
-        verdict="OK — SOT-23 3-pin, 2.92 x 2.37 mm. The footprint is SOT-23.",
+        pdf="DRV5032_ti.pdf", usd=None, stock="commodity, widely stocked",
+        verdict="OK — the sentinel that arms everything else. 540 nA is what "
+                "lets the rest of the board sleep.",
+    ),
+    "U7": PART(
+        mpn="CD74HC4067SM96", manufacturer="Texas Instruments",
+        description="16:1 analog multiplexer, the FSR column selector",
+        package="SSOP-24", body=(5.3, 8.2, 2.0), pitch=0.65, pins=24,
+        datasheet="https://www.ti.com/lit/ds/symlink/cd74hc4067.pdf",
+        pdf="CD74HC4067_ti.pdf", usd=None, stock="commodity",
+        verdict="OK. ⛔ The first transcription of this pinout was wrong in "
+                "almost every position and invented a VEE pin the package does "
+                "not have; tools/check.py caught it by noticing channel 0 "
+                "existed nowhere. It is now figure 4-1 of SCHS209D.",
+    ),
+    "U8": PART(
+        mpn="TLV9064IPWR", manufacturer="Texas Instruments",
+        description="Quad RRIO op-amp, 1.8-5.5 V — four of the six taxel amplifiers",
+        package="TSSOP-14", body=(4.4, 5.0, 1.2), pitch=0.65, pins=14,
+        datasheet="https://www.ti.com/lit/ds/symlink/tlv9064.pdf",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK. ⭐ These exist because firmware/test_sb_fsr.c measured what "
+                "the matrix does without them: phantom taxels at 39% of a real "
+                "press, or real ones read 83% light.",
+    ),
+    "U9": PART(
+        mpn="TLV9064IPWR", manufacturer="Texas Instruments",
+        description="Quad RRIO op-amp — the remaining two amplifiers",
+        package="TSSOP-14", body=(4.4, 5.0, 1.2), pitch=0.65, pins=14,
+        datasheet="https://www.ti.com/lit/ds/symlink/tlv9064.pdf",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK — its two spare channels are wired as unity-gain followers "
+                "at VREF rather than left floating.",
     ),
     "Y1": PART(
-        mpn="ABM8-32.000MHZ-B2-T",
-        manufacturer="Abracon",
-        description="32 MHz crystal, 3.2 x 2.5 mm, 4-pad SMD",
-        package="SMD-3225-4", body=(3.2, 2.5, 0.8), pitch=None, pins=4,
+        mpn="ABM8-32.000MHZ-B2-T", manufacturer="Abracon",
+        description="32 MHz crystal, Cl = 8 pF — the SoC's HFXO",
+        package="SMD-2016-4", body=(2.0, 1.6, 0.5), pitch=None, pins=4,
         datasheet="https://abracon.com/Resonators/ABM8.pdf",
-        pdf=None, usd=None,
-        verdict="OK — 3225 4-pad is the footprint used. ⚠️ Load capacitance has "
-                "to match the SoC's oscillator; not checked here.",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK — 2016 4-pad, and the load capacitance is Nordic's "
+                "(table 87), not a guess.",
+    ),
+    "Y2": PART(
+        mpn="ABM8-24.000MHZ-B2-T", manufacturer="Abracon",
+        description="24 MHz crystal for the first radar",
+        package="SMD-2016-4", body=(2.0, 1.6, 0.5), pitch=None, pins=4,
+        datasheet="https://abracon.com/Resonators/ABM8.pdf",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK. ⚠️ One crystal PER SENSOR — the A121 has an oscillator, not "
+                "a clock input, so the second radar cannot share the first's.",
+    ),
+    "Y3": PART(
+        mpn="ABM8-24.000MHZ-B2-T", manufacturer="Abracon",
+        description="24 MHz crystal for the second radar",
+        package="SMD-2016-4", body=(2.0, 1.6, 0.5), pitch=None, pins=4,
+        datasheet="https://abracon.com/Resonators/ABM8.pdf",
+        pdf=None, usd=None, stock="commodity", verdict="OK.",
     ),
     "J1": PART(
         mpn="FH12-10S-0.5SH(55)", manufacturer="Hirose",
-        description="FFC/FPC connector, 10 way, 0.5 mm pitch, horizontal, bottom contact",
+        description="FFC connector, 10 way, 0.5 mm — the optics module",
         package="FH12-10S", body=(9.4, 4.3, 1.0), pitch=0.5, pins=10,
         datasheet="https://www.hirose.com/product/p/CL0580-1163-2-55",
-        pdf=None, usd=None,
-        verdict="OK — the footprint is named for this exact part.",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK. ⚠️ The camera on the other end of it is NOT a chosen part.",
     ),
     "J4": PART(
         mpn="FH12-24S-0.5SH(55)", manufacturer="Hirose",
-        description="FFC/FPC connector, 24 way, 0.5 mm pitch, horizontal",
+        description="FFC connector, 24 way — the taxel matrix",
         package="FH12-24S", body=(16.4, 4.3, 1.0), pitch=0.5, pins=24,
         datasheet="https://www.hirose.com/product/p/CL0580-1173-6-55",
-        pdf=None, usd=None,
-        verdict="OK — 23 of 24 ways used: 16 columns, 6 rows, one ground.",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK — 16 columns, 6 rows, a ground and a shield tab.",
     ),
     "J2": PART(
         mpn="SM02B-SRSS-TB(LF)(SN)", manufacturer="JST",
-        description="SH series 2-pin 1.0 mm header, top entry — battery",
+        description="SH series 2-pin 1.0 mm header — the cell",
         package="JST-SH-02", body=(4.25, 2.9, 2.9), pitch=1.0, pins=2,
         datasheet="https://www.jst.com/wp-content/uploads/2021/01/eSH1.pdf",
-        pdf=None, usd=None,
-        verdict="OK. ⚠️ 1 A of charge current through an SH contact is close to "
-                "its 1 A rating; a 2 mm PH series would be the safer choice if "
-                "the 5 W charge path survives the thermal review.",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK at the charge current thermal/budget.py allows. ⚠️ At the "
+                "5 W the design originally asked for, an SH contact is at its "
+                "1 A rating and a 2 mm PH would be the honest choice.",
     ),
     "J3": PART(
         mpn="SM02B-SRSS-TB(LF)(SN)", manufacturer="JST",
-        description="SH series 2-pin 1.0 mm header — Qi coil",
+        description="SH series 2-pin header — the Qi receiver coil",
         package="JST-SH-02", body=(4.25, 2.9, 2.9), pitch=1.0, pins=2,
         datasheet="https://www.jst.com/wp-content/uploads/2021/01/eSH1.pdf",
-        pdf=None, usd=None, verdict="OK.",
+        pdf=None, usd=None, stock="commodity", verdict="OK.",
     ),
     "J5": PART(
         mpn="SM04B-SRSS-TB(LF)(SN)", manufacturer="JST",
-        description="SH series 4-pin 1.0 mm header — SWD",
+        description="SH series 4-pin header — SWD",
         package="JST-SH-04", body=(6.25, 2.9, 2.9), pitch=1.0, pins=4,
         datasheet="https://www.jst.com/wp-content/uploads/2021/01/eSH1.pdf",
-        pdf=None, usd=None, verdict="OK.",
+        pdf=None, usd=None, stock="commodity", verdict="OK.",
     ),
     "AE1": PART(
         mpn="2450AT43F0100E", manufacturer="Johanson Technology",
-        description="2.4 GHz ceramic chip antenna, 3.2 x 1.6 x 1.3 mm",
+        description="2.4 GHz ceramic chip antenna",
         package="0402-style chip", body=(3.2, 1.6, 1.3), pitch=None, pins=2,
         datasheet="https://www.johansontechnology.com/datasheets/2450AT43F0100/2450AT43F0100.pdf",
-        pdf=None, usd=None,
-        verdict="OK as a part. ⛔ But its 50 ohm feed is 1.4 mm wide on this "
-                "0.6 mm stack (rf/feed_loss.py), and the router could not fit "
-                "that across 26 mm of a 20 mm-tall board without pushing other "
-                "nets out. BLE_ANT is one of the pads still unconnected, and "
-                "the honest reading is that the antenna is in the wrong place, "
-                "not that the trace is hard to draw.",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK. ⚠️ Its matching network is Nordic's reference (L2, C6, C11 "
+                "from table 87) and has NOT been tuned for this board — a chip "
+                "antenna's match depends on the ground plane around it, so this "
+                "is a starting point for a VNA, not a finished network.",
     ),
 }
-
 # ── passives ─────────────────────────────────────────────────────────────────
-# ⚠️ Generic on purpose. A 100 nF 0402 X7R is a commodity; naming one
-# manufacturer's part would imply a selection that was never made. What DOES
-# need choosing is the dielectric and the voltage rating, so those are here.
-PASSIVES = {
-    "C_100n": ("100 nF ±10% X7R 16 V", "0402", ["C1", "C2", "C5"]),
-    "C_1u":   ("1 µF ±10% X5R 10 V", "0402", ["C4"]),
-    "C_4u7":  ("4.7 µF ±20% X5R 10 V", "0402", ["C3"]),
-    "C_10u":  ("10 µF ±20% X5R 6.3 V", "0402", ["C6"]),
-    "C_22u":  ("22 µF ±20% X5R 6.3 V", "0402", ["C7", "C8"]),
-    "R_10k":  ("10 kΩ ±1% 1/16 W", "0402", ["R1", "R2", "R3"]),
-    "R_100k": ("100 kΩ ±1% 1/16 W", "0402", ["R4"]),
-    "L_2u2":  ("2.2 µH ≥1.2 A Isat shielded", "0603", ["L1"]),
-    "L_1u0":  ("1.0 µH ≥1.2 A Isat shielded", "0603", ["L2"]),
-}
+# ⛔ DERIVED, NOT MAINTAINED. This used to be a hand-written dict and it drifted
+# the moment the board changed: it still described a 10 uF capacitor at C6 after
+# C6 had become a 1.5 pF part of the antenna match, and a 1 uH inductor at L2
+# that was by then 2.7 nH. A second list of the same facts is a list that will
+# be wrong. The values live in netlist.py, next to the nets they sit on, and
+# this groups them.
+#
+# ⚠️ Manufacturer part numbers are deliberately absent. A 100 nF 0402 X7R is a
+# commodity and naming one vendor's would imply a selection nobody made. What
+# does need choosing — dielectric, voltage rating, saturation current — is in
+# the value string, because those are the ones that bite.
+def passives():
+    """{value: (package, [refs])} for every R, C and L on the board."""
+    import netlist as _nl
+    groups = {}
+    for ref, val, _sym, _lib, fp, _pins, _x, _y in _nl.PARTS:
+        if ref[0] not in "RCL" or ref.startswith("RT"):
+            continue
+        pkg = fp.split("_")[1] if "_" in fp else fp
+        groups.setdefault((val, pkg), []).append(ref)
+    return {v: (pkg, sorted(refs)) for (v, pkg), refs in sorted(groups.items())}
 
-# ⛔ Parts the design needs and the board does not have. Each one is a
-# consequence of something measured elsewhere in this repo, not a wish list.
+
+# ⭐ THREE OF THE FOUR THINGS THIS LIST USED TO CONTAIN ARE NOW ON THE BOARD:
+# the cell thermistor (RT1, into the nPM1300's NTC input), the transimpedance
+# front end (U8/U9 with U7 selecting columns), and the pin budget, solved by
+# moving the sixteen columns behind a multiplexer instead of onto GPIO.
 MISSING = [
-    ("cell NTC thermistor, 10 kΩ B=3380", "thermal/budget.py puts the cell near "
-     "60 C on a 5 W charge against a 45 C limit. The nPM1300 has the input; "
-     "there is no thermistor on the board to connect to it."),
-    ("transimpedance front end for the FSR rows (6 channels, or 1 + a mux)",
-     "firmware/test_sb_fsr.c measures the two scan modes this board can run: "
-     "one invents phantom taxels at 39% of a real press, the other reads real "
-     "ones 83% light. Rows at virtual ground are exact and need an amplifier."),
-    ("a second processor, or an external FSR driver",
-     "the NPU part has 32 GPIO and the design asks for 46."),
-    ("camera interface", "no BLE+NPU SoC in a QFN offers one; the image path "
-     "needs either an SPI camera module or a different processor."),
+    ("a camera module", "J1 is a 10-way FFC carrying power, I2C, SPI and two "
+     "control lines, which is the right interface for a small sensor module — "
+     "but no module is chosen, and until one is, the optical half of the "
+     "recognition pipeline has no part number."),
+    ("an NPU", "the SoC is a 128 MHz Cortex-M33. ml/classify.py measured the "
+     "recognition method, not its runtime on this part. The 2 s settle window "
+     "the firmware already waits is the budget it has to fit in."),
+    ("a tuned antenna match", "L2/C6/C11 are the chip vendor's reference "
+     "values. A chip antenna matches against the ground plane around it, and "
+     "this ground plane is not theirs."),
 ]

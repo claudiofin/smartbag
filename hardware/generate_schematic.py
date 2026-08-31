@@ -119,6 +119,15 @@ def all_symbol_defs():
     return out
 
 
+def no_connect(x, y):
+    """⛔ A DELIBERATELY UNUSED PIN GETS A NO-CONNECT, NOT A LABEL. A label with
+    one pin on it is indistinguishable from a net somebody forgot to finish, and
+    ERC reports it as exactly that. The no-connect flag is the schematic saying
+    "this is on purpose", which is a different claim and the one that is true
+    for a spare GPIO or an interrupt this design does not use."""
+    return [f'\t(no_connect (at {x:.2f} {y:.2f}) (uuid "{uid()}"))']
+
+
 def stub_and_label(x, y, direction, net):
     """A wire from a pin out to a global label carrying the net name."""
     ex = x + direction * STUB
@@ -156,7 +165,10 @@ def place_part(ref, value, sym, lib, fp, pins, x, y):
             local_y = half_h - PITCH - i * PITCH
             px = x + side * (half_w + PITCH)
             py = y - local_y
-            out += stub_and_label(px, py, side, net)
+            if net in nl.SINGLE_PIN_NETS:
+                out += no_connect(px, py)
+            else:
+                out += stub_and_label(px, py, side, net)
     return out, half_h
 
 
@@ -234,8 +246,13 @@ def write_project():
             "rules": {
                 "min_clearance": 0.1,
                 "min_track_width": 0.1,
-                "min_via_diameter": 0.3,
-                "min_through_hole_diameter": 0.15,
+                "min_via_diameter": 0.25,
+                "min_through_hole_diameter": 0.1,
+                # ⚠️ 0.075 mm of annular ring, which is what a 0.25 mm via on a
+                # 0.10 mm drill leaves. KiCad defaults this to 0.1 and the rule
+                # was never declared, so the board silently inherited a limit
+                # that forbids the only via geometry its BGA can accept.
+                "min_via_annular_width": 0.075,
                 "min_hole_clearance": 0.1,
                 "min_hole_to_hole": 0.15,
                 "min_copper_edge_clearance": 0.15,
@@ -253,12 +270,17 @@ def write_project():
                 "solder_mask_to_copper_clearance": 0.0,
             },
             "track_width_list": [0.0, 0.1, 0.15, 0.3, 0.58, 1.4],
-            # ⛔ 0.35, not 0.3. min_via_annular_width above is 0.1, and a 0.3 mm
-            # pad on a 0.15 mm drill leaves 0.075 — the file was offering a via
-            # size its own rules forbid, and nothing caught it until an
-            # autorouter was handed the rules and asked to use them.
+            # ⛔ 0.25 ON A 0.10 DRILL, AND THE BGA DECIDED IT. The A121 is a
+            # 50-ball 0.5 mm package and two of its signal balls are fully
+            # surrounded: there is no surface route out of them, so they need a
+            # via inside the land. The land is 0.25 mm across, which is the
+            # largest via that fits — anything bigger encroaches on the next
+            # ball, and the 0.45/0.25 vias used everywhere else leave no land at
+            # all once the hole is drilled. So the whole board moves to 0.1 mm
+            # drills, which is one statable process step instead of a special
+            # case nobody will notice on a fabrication drawing.
             "via_dimensions": [{"diameter": 0.0, "drill": 0.0},
-                               {"diameter": 0.35, "drill": 0.15}],
+                               {"diameter": 0.25, "drill": 0.1}],
             "defaults": {
                 "board_outline_line_width": 0.1,
                 "copper_line_width": 0.15,
@@ -279,7 +301,7 @@ def write_project():
                 {
                     "name": "Default",
                     "clearance": 0.1, "track_width": 0.1,
-                    "via_diameter": 0.35, "via_drill": 0.15,
+                    "via_diameter": 0.25, "via_drill": 0.1,
                     "microvia_diameter": 0.2, "microvia_drill": 0.1,
                     "diff_pair_width": 0.1, "diff_pair_gap": 0.15,
                     "diff_pair_via_gap": 0.15,
@@ -294,7 +316,7 @@ def write_project():
                     # width is not decoration.
                     "name": "Power",
                     "clearance": 0.15, "track_width": 0.3,
-                    "via_diameter": 0.45, "via_drill": 0.25,
+                    "via_diameter": 0.25, "via_drill": 0.1,
                     "microvia_diameter": 0.2, "microvia_drill": 0.1,
                     "diff_pair_width": 0.1, "diff_pair_gap": 0.15,
                     "diff_pair_via_gap": 0.15,
@@ -317,7 +339,7 @@ def write_project():
                     # like a solved problem.
                     "name": "RF_60G",
                     "clearance": 0.2, "track_width": 0.58,
-                    "via_diameter": 0.45, "via_drill": 0.25,
+                    "via_diameter": 0.25, "via_drill": 0.1,
                     "microvia_diameter": 0.2, "microvia_drill": 0.1,
                     "diff_pair_width": 0.58, "diff_pair_gap": 0.2,
                     "diff_pair_via_gap": 0.2,
@@ -336,7 +358,7 @@ def write_project():
                     # from a custom rule that exempts pads, not from the class.
                     "name": "RF_24G",
                     "clearance": 0.2, "track_width": 1.4,
-                    "via_diameter": 0.45, "via_drill": 0.25,
+                    "via_diameter": 0.25, "via_drill": 0.1,
                     "microvia_diameter": 0.2, "microvia_drill": 0.1,
                     "diff_pair_width": 1.4, "diff_pair_gap": 0.25,
                     "diff_pair_via_gap": 0.25,
@@ -364,6 +386,14 @@ def write_project():
     }
     with open(PRO, "w") as f:
         json.dump(pro, f, indent=2)
+    # ⚠️ A FOOTPRINT LIBRARY TABLE TOO, not just a symbol one. The A121 has no
+    # stock footprint, so it lives in hardware/footprints/SmartBag.pretty — and
+    # without this file kicad-cli cannot resolve it and reports every part that
+    # uses it as a broken footprint link.
+    with open(os.path.join(os.path.dirname(TABLE), "fp-lib-table"), "w") as f:
+        f.write('(fp_lib_table\n\t(version 7)\n\t(lib (name "SmartBag")'
+                '(type "KiCad")(uri "${KIPRJMOD}/footprints/SmartBag.pretty")'
+                '(options "")(descr "Footprints generated from datasheets"))\n)\n')
     with open(TABLE, "w") as f:
         f.write('(sym_lib_table\n\t(version 7)\n\t(lib (name "smartbag")'
                 '(type "KiCad")(uri "${KIPRJMOD}/smartbag.kicad_sym")'

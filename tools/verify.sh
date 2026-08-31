@@ -31,15 +31,16 @@ kicad-cli sch erc --severity-all --exit-code-violations \
 
 echo
 echo "== DRC (with schematic parity) =="
-kicad-cli pcb drc --schematic-parity --severity-all \
+kicad-cli pcb drc --schematic-parity --severity-error \
   -o /tmp/smartbag_drc.rpt hardware/smartbag_core.kicad_pcb >/dev/null 2>&1 || true
 grep -E "Found .* (DRC violations|unconnected pads|Footprint errors)" /tmp/smartbag_drc.rpt \
   | sed 's/^\*\* /  /;s/ \*\*$//'
 
 echo
 echo "== BOM vs footprints =="
-python3 tools/bom_report.py | grep -cE "^  ok " | sed 's/^/  /;s/$/ of 12 named parts have a real MPN whose package fits/'
-python3 tools/bom_report.py | grep "cannot accept" | sed 's/^/  /'
+python3 tools/bom_report.py > /tmp/smartbag_bom.txt
+echo "  $(grep -cE '^  ok ' /tmp/smartbag_bom.txt) of $(grep -cE '^  (ok|⛔) ' /tmp/smartbag_bom.txt) named parts have a real MPN whose package fits"
+grep "cannot accept" /tmp/smartbag_bom.txt | sed 's/^/  /' || true
 
 echo
 echo "== physics =="

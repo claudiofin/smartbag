@@ -26,6 +26,7 @@ import dimensions as d              # noqa: E402
 sys.path.insert(0, os.path.join(ROOT, "hardware"))
 import generate_pcb as pcb          # noqa: E402
 import netlist as nl                # noqa: E402
+import place as pl                  # noqa: E402
 
 FAILURES = []
 
@@ -151,7 +152,7 @@ print("\n── schematic and board agree")
 import re                                                       # noqa: E402
 bad_pins = []
 for ref, _v, _sym, lib, fp, pins, _x, _y in nl.PARTS:
-    path = os.path.join(pcb.FP_LIB, f"{lib}.pretty", f"{fp}.kicad_mod")
+    path = pcb.footprint_path(lib, fp)
     pads = set(re.findall(r'\(pad "([^"]*)"', open(path).read()))
     missing = {str(p[0]) for p in pins} - pads
     if missing:
@@ -173,20 +174,35 @@ clashes = {n: [r for r, _p, t in pins if t == "output"]
 clashes = {n: v for n, v in clashes.items() if len(v) > 1}
 check("no net has two outputs fighting", not clashes, str(clashes))
 
-# ⭐ The claim that makes this layout routable without an autorouter: the FSR
-# columns leave U1 in the same order they arrive at J4.
-u1 = {net: num for num, _n, _t, net in nl.part("U1")[5]}
-j4 = {net: num for num, _n, _t, net in nl.part("J4")[5]}
-cols = [f"FSR_C{i}" for i in range(d.FSR_COLS)]
-in_order = (all(u1[c] == u1[cols[0]] + i for i, c in enumerate(cols))
-            and all(j4[c] == j4[cols[0]] + i for i, c in enumerate(cols)))
-check("the FSR bus leaves U1 in the order it reaches J4", in_order)
+# ⛔ THIS USED TO CHECK THAT THE FSR COLUMNS LEFT U1 IN PIN ORDER, which was the
+# claim that the board needed no autorouter. Both halves of that are gone: the
+# columns leave a multiplexer now, not the processor, and the board is routed by
+# Freerouting. What is worth checking instead is that all sixteen columns and all
+# six rows still reach the connector, because the front end grew an extra chip
+# between them and it would be easy to lose one.
+_j4 = {net for _n, _p, _t, net in nl.part("J4")[5]}
+_mux = {net for _n, _p, _t, net in nl.part("U7")[5]}
+_cols = {f"FSR_C{i}" for i in range(d.FSR_COLS)}
+_rows = {f"FSR_R{i}" for i in range(d.FSR_ROWS)}
+check("every FSR column reaches both the connector and the multiplexer",
+      _cols <= _j4 and _cols <= _mux,
+      f"missing at J4 {sorted(_cols - _j4)}, at U7 {sorted(_cols - _mux)}")
+check("every FSR row reaches the connector", _rows <= _j4,
+      str(sorted(_rows - _j4)))
+
+# ⭐ And that each row lands on an amplifier rather than on a bare ADC pin. This
+# is the whole finding of firmware/test_sb_fsr.c expressed as an assertion: a
+# row tied straight to the processor is the topology that reads 83% low.
+_amp_in = {net for ref in ("U8", "U9")
+           for _n, name, _t, net in nl.part(ref)[5] if name.endswith("-")}
+check("every FSR row lands on a transimpedance amplifier input",
+      _rows <= _amp_in, str(sorted(_rows - _amp_in)))
 
 print("\n── placement")
 # ⚠️ Courtyards, not pad extents. The first version of this check used pad
 # bounding boxes and passed a J1/U2 pair that DRC then rejected.
 def courtyard(lib, fp):
-    t = open(os.path.join(pcb.FP_LIB, f"{lib}.pretty", f"{fp}.kicad_mod")).read()
+    t = open(pcb.footprint_path(lib, fp)).read()
     pts = [(float(a), float(b))
            for m in re.finditer(r'\(fp_(?:line|rect|poly)\b(.*?)\(layer "F\.CrtYd"',
                                 t, re.S)
@@ -196,8 +212,14 @@ def courtyard(lib, fp):
     ys = [q[1] for q in pts] or [-1, 1]
     return min(xs), max(xs), min(ys), max(ys)
 
+# ⚠️ The SETTLED positions, not the hints in netlist.py. Checking the hints
+# would test a floorplan nobody fabricates.
+_settled, _worst = pl.relax(nl.PARTS,
+                            lambda l, f: open(pcb.footprint_path(l, f)).read(),
+                            rotation=nl.ROTATION)
 boxes = []
-for ref, _v, _s, lib, fp, _p, x, y in nl.PARTS:
+for ref, _v, _s, lib, fp, _p, _hx, _hy in nl.PARTS:
+    x, y = _settled[ref]
     x0, x1, y0, y1 = courtyard(lib, fp)
     boxes.append((ref, x + x0, x + x1, y + y0, y + y1))
 overlap = [(boxes[i][0], boxes[j][0])
@@ -205,9 +227,15 @@ overlap = [(boxes[i][0], boxes[j][0])
            if boxes[i][1] < boxes[j][2] and boxes[j][1] < boxes[i][2]
            and boxes[i][3] < boxes[j][4] and boxes[j][3] < boxes[i][4]]
 check("no two courtyards overlap", not overlap, str(overlap))
+# ⛔ THREE ISLANDS, NOT ONE, AND NOTHING ON THE FLEX. The board is a 196 mm strip
+# with two 30 mm flex tails in it; a package soldered across a section that bends
+# does not stay soldered. An earlier placement pass put a 24-way connector and a
+# row of resistors out over a tail, and off the board edge with them.
 outside = [r for r, x0, x1, y0, y1 in boxes
-           if x0 < -48 or x1 > 48 or y0 < -10 or y1 > 10]
-check("every part sits on the rigid island", not outside, str(outside))
+           if not any(ix0 <= x0 and x1 <= ix1 and iy0 <= y0 and y1 <= iy1
+                      for ix0, ix1, iy0, iy1 in pl.ISLANDS)]
+check("every part sits on a rigid island, none on the flex tails",
+      not outside, str(outside))
 
 print("\n── the firmware agrees with the model")
 # ⛔ The taxel grid exists in three places — dimensions.py, the FFC pinout in

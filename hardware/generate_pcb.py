@@ -21,7 +21,8 @@ import uuid as _uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import netlist as nl          # noqa: E402
+import netlist as nl
+import place          # noqa: E402
 import route as rt            # noqa: E402
 OUT = os.path.join(HERE, "smartbag_core.kicad_pcb")
 
@@ -51,6 +52,20 @@ def _footprint_library():
 
 FP_LIB = _footprint_library()
 
+# ⭐ Local footprints win. The A121 has no stock footprint anywhere, so
+# hardware/generate_footprints.py writes it into footprints/SmartBag.pretty and
+# this resolver looks there first. Everything else still comes from KiCad's own
+# library, which is the point: exactly one footprint on this board is drawn by
+# hand.
+LOCAL_FP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "footprints")
+
+
+def footprint_path(lib, name):
+    local = os.path.join(LOCAL_FP, f"{lib}.pretty", f"{name}.kicad_mod")
+    if os.path.exists(local):
+        return local
+    return os.path.join(FP_LIB, f"{lib}.pretty", f"{name}.kicad_mod")
+
 # Board centre on an A3 sheet. The board is 196 mm wide: on A4 the outline would
 # run off the paper and pcbnew flags that the moment you open the file.
 CX, CY = 210.0, 148.0
@@ -77,11 +92,18 @@ def uid():
 # The FSR matrix no longer has a tail on the board: it gets an FFC connector
 # (J4) and a separate flat cable, which is also how it would really be
 # assembled (the cable pulls out).
+# ⭐ THE FLEX TAILS ARE 14 mm WIDE, NOT 8. They started at 8 because a narrow
+# tail looks like the flexible thing it is, and 8 mm turned out to be the
+# bottleneck: eight nets have to cross each tail to reach a radar — three SPI
+# lines, a chip select, an interrupt, an enable and two supplies — and the
+# router could not fit the last two. Widening the tail costs nothing that
+# matters. Bend radius is a function of THICKNESS, not width, so a wider tail
+# folds exactly as tightly; it just carries more copper across the fold.
 OUTLINE = [
-    (-98, -10), (-78, -10), (-78, -4), (-48, -4), (-48, -10),
-    (48, -10), (48, -4), (78, -4), (78, -10), (98, -10),
-    (98, 10), (78, 10), (78, 4), (48, 4), (48, 10),
-    (-48, 10), (-48, 4), (-78, 4), (-78, 10), (-98, 10),
+    (-98, -10), (-78, -10), (-78, -7), (-48, -7), (-48, -10),
+    (48, -10), (48, -7), (78, -7), (78, -10), (98, -10),
+    (98, 10), (78, 10), (78, 7), (48, 7), (48, 10),
+    (-48, 10), (-48, 7), (-78, 7), (-78, 10), (-98, 10),
 ]
 
 # ⭐ THE BOM AND THE PLACEMENT NOW LIVE IN netlist.py, next to the pins and the
@@ -124,7 +146,8 @@ def _inject_nets(text, pad_nets, net_index):
     return "".join(out)
 
 
-def read_footprint(lib, name, ref, value, x, y, pad_nets=None, net_index=None):
+def read_footprint(lib, name, ref, value, x, y, pad_nets=None, net_index=None,
+                   angle=0):
     """Inline a .kicad_mod into the board file, the way pcbnew does on place.
 
     ⚠️ .kicad_mod files carry `(version ...)` and `(generator ...)` lines that do
@@ -132,7 +155,7 @@ def read_footprint(lib, name, ref, value, x, y, pad_nets=None, net_index=None):
     but rejects them on the first save. They get stripped here rather than
     tolerated.
     """
-    path = os.path.join(FP_LIB, f"{lib}.pretty", f"{name}.kicad_mod")
+    path = footprint_path(lib, name)
     if not os.path.exists(path):
         raise SystemExit(f"missing footprint: {path}")
     with open(path) as f:
@@ -144,7 +167,8 @@ def read_footprint(lib, name, ref, value, x, y, pad_nets=None, net_index=None):
     # The footprint's (at ...) goes right after the layer, plus an instance uuid.
     t = t.replace('\n\t(layer "F.Cu")',
                   f'\n\t(layer "F.Cu")\n\t(uuid "{uid()}")'
-                  f'\n\t(at {CX + x:.4f} {CY + y:.4f})', 1)
+                  f'\n\t(at {CX + x:.4f} {CY + y:.4f}'
+                  + (f' {angle}' if angle else '') + ')', 1)
     t = t.replace('(property "Reference" "REF**"', f'(property "Reference" "{ref}"', 1)
     # ⚠️ Reference silk hidden on every part. On a board 20 mm tall the default
     # 1 mm designators of 26 footprints land on each other, on neighbouring pads
@@ -186,8 +210,8 @@ def track(points, width, layer="F.Cu", net=0):
     return out
 
 
-def via(x, y, net=1):
-    return (f'\t(via (at {CX+x:.4f} {CY+y:.4f}) (size 0.45) (drill 0.2)'
+def via(x, y, net=1, size=0.25, drill=0.1):
+    return (f'\t(via (at {CX+x:.4f} {CY+y:.4f}) (size {size}) (drill {drill})'
             f' (layers "F.Cu" "B.Cu") (net {net}) (uuid "{uid()}"))')
 
 
@@ -246,6 +270,31 @@ def ground_zone(layer, name):
 	)'''
 
 
+def power_zone(layer, name, net_name, net, x0=-46.5, x1=47.5, y0=-8.5, y1=8.5):
+    """A rectangular supply pour over the centre island.
+
+    ⚠️ Priority 1, above the ground pours. Two zones on the same layer with the
+    same priority interleave in whatever order they were written, which is not a
+    decision anyone made; the higher number wins the overlap explicitly.
+    """
+    pts = " ".join(f"(xy {CX + x:.4f} {CY + y:.4f})"
+                   for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)))
+    return f'''	(zone
+		(net {net})
+		(net_name "{net_name}")
+		(layers "{layer}")
+		(uuid "{uid()}")
+		(name "{name}")
+		(priority 1)
+		(hatch edge 0.5)
+		(connect_pads yes (clearance 0.2))
+		(min_thickness 0.2)
+		(filled_areas_thickness no)
+		(fill yes (island_removal_mode 0) (thermal_gap 0.3) (thermal_bridge_width 0.25))
+		(polygon (pts {pts}))
+	)'''
+
+
 def patch_array(cx0, label):
     """2x4 array of 60 GHz patches. Patch side 1.2 mm ~ lambda/2 in the substrate
     (lambda0 = 5 mm at 60 GHz, eps_r ~ 3.0 on a low-loss flex laminate); pitch
@@ -277,6 +326,14 @@ def patch_array(cx0, label):
 NET_INDEX = {"": 0, "GND": 1}
 for _n in sorted(nl.nets()):
     NET_INDEX.setdefault(_n, len(NET_INDEX))
+# ⚠️ The board file has to declare every net it uses, including the ones KiCad's
+# schematic invented for no-connect pins. They are real entries in the netlist as
+# far as parity is concerned.
+for _r, _v, _s, _l, _f, _pins, _x, _y in nl.PARTS:
+    for _num, _pname, _et, _net in _pins:
+        if _net in nl.SINGLE_PIN_NETS:
+            _key = f"unconnected-({_r}-{_pname.replace('/', '{slash}')}-Pad{_num})"
+            NET_INDEX.setdefault(_key, len(NET_INDEX))
 
 
 def _keepouts(margin=0.6):
@@ -288,7 +345,7 @@ def _keepouts(margin=0.6):
     """
     boxes = []
     for _ref, _v, _s, lib, fp, _pins, x, y in nl.PARTS:
-        path = os.path.join(FP_LIB, f"{lib}.pretty", f"{fp}.kicad_mod")
+        path = footprint_path(lib, fp)
         t = open(path).read()
         pts = [(float(a), float(b))
                for m in re.finditer(
@@ -318,6 +375,50 @@ def _segment(a, b, width, layer, net):
 
 def _via_at(x, y, net):
     return via(x, y, net)
+
+
+def via_in_pad(net_index, settled):
+    """Vias dropped inside the A121's interior balls, before routing.
+
+    ⛔ AN INTERIOR BALL ON A 0.5 mm BGA CANNOT ESCAPE ON THE SURFACE. The land is
+    0.25 mm across, which leaves 0.25 mm to the next land, and a 0.1 mm track
+    with 0.1 mm clearance on each side needs 0.3 mm. There is no route out. The
+    router does not report this as impossible — it reports four unconnected pads
+    and stops, which is the same thing said quietly.
+    ⭐ This is the claim an earlier version of this project made about the QFN,
+    where it was false: a QFN has one perimeter row and every pin escapes
+    outwards. On a BGA it is true, and only for the balls that are actually
+    surrounded. Twenty-three of the A121's fifty balls carry signals and only
+    four of those are interior, so four vias per sensor is the whole cost.
+
+    ⚠️ Via-in-pad has to be FILLED AND CAPPED at fabrication or the paste drains
+    into the hole and the joint starves. tools/fab_notes.py says so.
+    """
+    import math
+
+    import generate_footprints as gf
+    out = []
+    for ref in ("U2", "U6"):
+        px, py = settled[ref]
+        # ⛔ THE BALL OFFSETS HAVE TO BE ROTATED WITH THE PART. The first version
+        # of this used the footprint's own coordinates directly, and once the
+        # sensors were turned to face the processor every via landed on a
+        # different ball — quietly, because a via on the wrong pad is still a
+        # legal via. KiCad's angle is counter-clockwise in a y-down frame, so
+        # x' = bx cos + by sin and y' = -bx sin + by cos.
+        th = math.radians(nl.ROTATION.get(ref, 0))
+        cos_t, sin_t = math.cos(th), math.sin(th)
+        for ball, name in gf.A121_BALLS.items():
+            row, col = gf.A121_ROWS.index(ball[0]), int(ball[1:])
+            interior = 0 < row < len(gf.A121_ROWS) - 1 and 1 < col < 10
+            if not interior or name == "GND":
+                continue
+            bx, by = gf.a121_position(ball)
+            rx = bx * cos_t + by * sin_t
+            ry = -bx * sin_t + by * cos_t
+            net = nl.pad_nets(ref)[ball]
+            out.append(via(px + rx, py + ry, net_index[net], size=0.25, drill=0.1))
+    return out
 
 
 def route(net_index):
@@ -381,26 +482,62 @@ def build():
     #    horizontals on In2.Cu — and crossings become impossible by
     #    construction rather than by luck.
     #
-    # 2. RF. The patch needs its reference plane 0.25 mm below it (see rf/).
-    #    On a two-layer board that plane is the bottom of a 0.6 mm stack, which
-    #    is the geometry the simulation rejected. In1.Cu, poured solid, IS that
-    #    reference plane, and the antenna islands keep it 0.25 mm away.
+    # 2. RF. ⭐ THIS USED TO BE ABOUT THE 60 GHz PATCHES and it no longer is.
+    #    The board carried two 2x4 patch arrays on 0.25 mm islands because the
+    #    transceiver was in the middle; rf/feed_loss.py priced that feed at
+    #    8.2 dB one way, and then the real part settled it — the Acconeer A121
+    #    has its antenna inside the package, so the sensors moved to the ends
+    #    and the patches are gone. In1.Cu stays a solid reference anyway: it is
+    #    still the return plane for a 2.4 GHz feed and for SPI running the whole
+    #    196 mm of the board.
     #
-    # ⚠️ In1.Cu is poured and never routed on. A signal crossing the reference
-    # plane under a 60 GHz microstrip would undo the thing it is there for.
+    # ⚠️ In1.Cu is poured and NOT routed on, and that is enforced rather than
+    # asserted: tools/route.sh marks it a `power` layer in the Specctra export,
+    # because an autorouter handed four signal layers will use four.
+    # ⛔ A VDD_3V3 POUR ON B.Cu WAS TRIED HERE AND MADE THINGS WORSE. B.Cu was
+    # nearly empty — 22 tracks against 334 on In2.Cu — so pouring the 3.3 V rail
+    # on it looked free. It cost four clearance errors where the pour met ground
+    # copper the router had already placed, and it did not fix the two supply
+    # pins it was meant to fix. power_zone() is kept because the reasoning still
+    # holds for a board laid out with the pour in mind from the start; adding a
+    # plane underneath finished routing is not the same thing.
     r.append(ground_zone("F.Cu", "GND_top"))
     r.append(ground_zone("In1.Cu", "GND_reference"))
     r.append(ground_zone("B.Cu", "GND_bottom"))
 
-    # radar arrays on the end islands
-    r += patch_array(-93.5, "A1 60GHz")
-    r += patch_array(81.5, "A2 60GHz")
+    # ⭐ The coordinates in netlist.py are a FLOORPLAN, not a layout: they say
+    # the radars belong at the ends and the FSR front end belongs beside its
+    # connector. place.relax() turns that into positions whose courtyards do not
+    # intersect, because 91 hand-typed coordinates always collide somewhere —
+    # the first pass collided in 28 places.
+    # ⛔ A no-connect pin must carry NO net on the board. The schematic gives it
+    # an auto-generated "unconnected-(U1-P1.09-Pad37)" name; putting this
+    # project's own SPARE3 on the pad instead makes the two files disagree and
+    # DRC reports it as a net conflict — correctly, because a pad that claims to
+    # be on a net the schematic has never heard of is exactly the divergence
+    # schematic parity exists to catch.
+    settled, worst = place.relax(nl.PARTS,
+                                 lambda l, f: open(footprint_path(l, f)).read(),
+                                 rotation=nl.ROTATION)
+    print(f"    placement settled, worst displacement {worst:.2f} mm")
 
     # components, placed and netted from netlist.py
-    for ref, val, _sym, lib, fp, pins, x, y in nl.PARTS:
-        r.append(read_footprint(lib, fp, ref, val, x, y,
-                                {str(num): net for num, _n, _t, net in pins},
-                                NET_INDEX))
+    for ref, val, _sym, lib, fp, pins, _hx, _hy in nl.PARTS:
+        x, y = settled[ref]
+        # ⚠️ A no-connect pin is not netless on the board — KiCad's schematic
+        # invents a name for it, `unconnected-(U1-P1.09-Pad37)`, with slashes in
+        # the pin name escaped as {slash}. Leaving the pad netless is just as
+        # much a divergence as putting the wrong net on it; parity wants the
+        # same string on both sides, so it is reproduced here exactly.
+        _pn = {}
+        for _num, _pname, _et, _net in pins:
+            if _net in nl.SINGLE_PIN_NETS:
+                _safe = _pname.replace("/", "{slash}")
+                _pn[str(_num)] = f"unconnected-({ref}-{_safe}-Pad{_num})"
+            else:
+                _pn[str(_num)] = _net
+        r.append(read_footprint(lib, fp, ref, val, x, y, _pn, NET_INDEX,
+                                nl.ROTATION.get(ref, 0)))
 
     # ── Routing ──────────────────────────────────────────────────────────
     # ⛔ THE DECORATIVE ROUTING IS GONE. Before there was a netlist, this block
@@ -409,6 +546,7 @@ def build():
     # were: 40 shorts, 6 clearance violations and 168 solder-mask bridges — one
     # object producing more than half the errors on the board. Tracks that are
     # not connectivity have no business in a board file.
+    r += via_in_pad(NET_INDEX, settled)
     r += route(NET_INDEX)
 
     # ── Silkscreen ───────────────────────────────────────────────────────
@@ -423,7 +561,7 @@ def build():
     for i, s_ in enumerate([
         "U1 SoC+NPU   U2 60 GHz radar   U3 PMIC",
         "U4 6-axis IMU   U5 zip Hall   Y1 32 MHz",
-        "A1/A2 2x4 patch array, lambda0/2 pitch",
+        "U2/U6 A121: 60 GHz radar, antenna in package",
     ]):
         r.append(text(s_, 22.0, -0.6 + i * 1.9, "B.SilkS", 0.9, 0.14))
 
@@ -432,8 +570,8 @@ def build():
         "rigid FR4 islands 0.6 mm on 2L polyimide flex",
         "8 mm flex tails: min bend radius 12 mm (10x thickness)",
         "J4: 16 cols + 6 rows = 22 lines on a 24-way FFC",
-        "A1/A2 islands: 0.25 mm dielectric under the patches, NOT 0.6",
-        "  full-wave sim: 0.25 mm -> -27 dB at 59.9 GHz; 0.6 mm -> -2.5 dB",
+        "U2/U6 need solid ground under the whole package (A121 ds 5.4)",
+        "no 60 GHz copper on this board: the antennas are inside the A121",
     ]):
         r.append(text(s_, -98.0, 16.0 + i * 2.4, "Cmts.User", 1.1, 0.18))
 
