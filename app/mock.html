@@ -17,14 +17,32 @@
 -->
 <style>
   :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; }
+  /* ⚠️ The phone is 414 x 868 INCLUDING its bezel. Under content-box the 12 px
+     padding was added on top, making the box 438 x 892 — so a page sized for
+     414 x 868 plus 90 mm of margin came out 24 px lop-sided, which is exactly
+     the amount by which the frame looked off-centre. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  /* ⛔ THE CROP WAS GUESSED AND IT ATE THE BOTTOM BEZEL. Capturing a square and
+     then cutting a portrait out of it centres nothing: it centres on the middle
+     of the CAPTURE, which is only the middle of the phone if the capture and
+     the viewport agree — and headless Chrome does not reliably make them agree.
+     ⭐ So the page IS the picture: a fixed box exactly the phone plus a margin,
+     with the phone centred in it by construction. Screenshot it and there is
+     nothing left to crop. */
   body {
-    display: grid; place-items: center; background: #101015;
+    position: relative; width: 594px; height: 1048px; overflow: hidden;
+    background: #101015;
     background-image: radial-gradient(120% 80% at 50% 0%, #1b1b22 0%, #0c0c10 70%);
     font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; color: #b9b4a8;
   }
+  /* ⚠️ Absolute, not centred. `place-items: center` centres in the VIEWPORT,
+     and headless Chrome gave a viewport shorter than the box asked for — so the
+     phone overflowed upwards and lost its bottom bezel to the frame edge. A
+     left/top in pixels cannot be got wrong by a browser that disagrees about
+     how tall the window is: 90 px of margin on every side, by arithmetic. */
   .phone {
-    position: relative; width: 414px; height: 868px; border-radius: 54px;
+    position: absolute; left: 90px; top: 90px; width: 414px; height: 868px; border-radius: 54px;
     background: #24242a; padding: 12px;
     box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06),
                 inset 0 0 0 2px rgba(255,255,255,0.05);
