@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SmartBag — the app</title>
+<!--
+  ⭐ THE MOCK IS THE REAL APP. This page is a phone-shaped hole with index.html
+  in it: the iframe is 390 px wide, which is what puts the app into its phone
+  layout, and everything inside is the same code, the same simulator and the
+  same protocol.js that decodes a real insert's bytes. Nothing here is drawn to
+  look like a screenshot of something that does not run.
+
+  ⚠️ It exists because headless Chrome would not honour --window-size for the
+  layout viewport, so the screenshots came out clipped. Fixing the width in the
+  page rather than in the capture makes the picture reproducible from any
+  window size, which it needs to be.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: grid; place-items: center; background: #101015;
+    background-image: radial-gradient(120% 80% at 50% 0%, #1b1b22 0%, #0c0c10 70%);
+    font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; color: #b9b4a8;
+  }
+  .phone {
+    position: relative; width: 414px; height: 868px; border-radius: 54px;
+    background: #24242a; padding: 12px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06),
+                inset 0 0 0 2px rgba(255,255,255,0.05);
+  }
+  .screen {
+    position: relative; width: 390px; height: 844px; border-radius: 44px;
+    overflow: hidden; background: #14140f;
+  }
+  iframe { width: 390px; height: 844px; border: 0; display: block; }
+  .notch {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    width: 112px; height: 30px; border-radius: 16px; background: #0b0b0d; z-index: 2;
+  }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="screen">
+      <div class="notch"></div>
+      <iframe src="index.html?demo=5" title="SmartBag app"></iframe>
+    </div>
+  </div>
+</body>
+</html>

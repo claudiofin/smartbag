@@ -446,6 +446,9 @@ print("\n── the pictures are not older than what they show")
 _SHOWS = {
     "render/views/hero.png": ["cad/bag_and_insert.py", "dimensions.py",
                               "render/scenes.py"],
+    "render/views/press.png": ["cad/bag_and_insert.py", "dimensions.py",
+                                 "render/scenes.py",
+                                 "hardware/smartbag_core.kicad_pcb"],
     "render/views/section.png": ["cad/bag_and_insert.py", "dimensions.py",
                                  "render/scenes.py",
                                  "hardware/smartbag_core.kicad_pcb"],

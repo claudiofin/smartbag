@@ -9,6 +9,10 @@
 <body>
 <header>
   <h1>SmartBag</h1>
+  <!-- ⭐ On a phone this collapses into the app bar: the bag's name on the left,
+       its battery on the right, the way every app that talks to one device does
+       it. The two buttons below are setup, not navigation, so they go away. -->
+  <p class="appbar-sub" id="appbar-sub"></p>
   <div class="actions">
     <button id="connect">Connect an insert</button>
     <button id="add-sim" class="ghost">Add a simulated insert</button>
@@ -20,24 +24,24 @@
 <nav id="inserts" class="inserts"></nav>
 
 <main id="main" hidden>
-  <section class="panel" id="status-panel">
+  <section class="panel" id="status-panel" data-tab="bag">
     <h2>Insert</h2>
     <dl id="status"></dl>
   </section>
 
-  <section class="panel">
+  <section class="panel" data-tab="bag">
     <h2>Inside <span id="count" class="tag"></span></h2>
     <ul id="inventory" class="inventory"></ul>
   </section>
 
-  <section class="panel">
+  <section class="panel wide" data-tab="bag">
     <h2>Where</h2>
     <p id="map-age" class="age"></p>
     <div id="map-wrap"></div>
     <p class="caption" id="map-caption"></p>
   </section>
 
-  <section class="panel">
+  <section class="panel" data-tab="enrol">
     <h2>Enrol an object</h2>
     <form id="enrol">
       <input id="enrol-label" type="text" maxlength="24" placeholder="what is it?" required>
@@ -52,7 +56,7 @@
     <p id="enrol-status" class="enrol-status"></p>
   </section>
 
-  <section class="panel">
+  <section class="panel" data-tab="activity">
     <h2>What the insert is doing</h2>
     <ul id="log" class="log"></ul>
     <div class="actions sim-only">
@@ -61,6 +65,17 @@
     </div>
   </section>
 </main>
+
+<!-- ⛔ A LIST OF PANELS IS A WEB PAGE. The same markup is an APP when it has one
+     thing on screen at a time and a way between them, so on a phone these three
+     tabs show one panel each and this bar is fixed to the bottom of the glass.
+     Above 600 px it disappears and everything is on the page at once, which is
+     what a wide screen is for. -->
+<nav class="tabs" id="tabs" hidden>
+  <button data-tab="bag" class="on">Bag</button>
+  <button data-tab="enrol">Teach</button>
+  <button data-tab="activity">Activity</button>
+</nav>
 
 <footer>
   <p>Every payload on this page was decoded by <code>protocol.js</code> from the

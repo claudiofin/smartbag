@@ -45,6 +45,13 @@ button:hover { opacity: 0.85; }
   color: var(--bg); background: var(--fg); border-color: var(--fg);
 }
 main { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); }
+/* ⭐ The plan of the bag gets the whole row. It is the one panel that answers
+   the question people actually open the app with — "where is it" — and in a
+   half-width column a 225 x 78 mm insert renders about forty pixels tall, which
+   is a diagram of nothing. */
+.panel.wide { grid-column: 1 / -1; }
+#map-wrap svg { width: 100%; height: auto; display: block;
+  max-height: 440px; max-width: 420px; margin: 0 auto; }
 .panel {
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 1.1rem 1.2rem;
@@ -91,3 +98,64 @@ footer {
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
        font-size: 0.92em; }
 .sim-only { margin-top: 0.9rem; }
+
+/* ══ phone ═══════════════════════════════════════════════════════════════════
+ * ⛔ THE SAME MARKUP WAS READING AS A WEBSITE, and on a phone that is the whole
+ * problem: a title, two setup buttons and five stacked panels is a page you
+ * scroll, not a thing you glance at. What the person holding this wants is the
+ * bag — is my wallet in it, where — in the first screenful, and everything else
+ * one tap away.
+ *
+ * ⭐ So below 600 px the header becomes an app bar with the bag and its battery,
+ * the map moves to the top and fills the screen, and the three tabs at the
+ * bottom show one panel at a time. No second implementation: the panels are the
+ * same elements, and a wide screen still shows them all at once. */
+@media (max-width: 600px) {
+  body { padding: 0 0 4.6rem; max-width: none; }
+  header {
+    position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap;
+    align-items: baseline; gap: 0 0.6rem; margin: 0; padding: 0.9rem 1rem 0.7rem;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 1.15rem; margin: 0; }
+  .appbar-sub { margin: 0 0 0 auto; font-size: 0.82rem; color: var(--dim); }
+  header .actions { flex-basis: 100%; margin-top: 0.55rem; }
+  header .actions button { font-size: 0.78rem; padding: 0.35rem 0.7rem; }
+  /* Setup lives on the connect screen; once an insert is attached it is noise. */
+  body.attached header .actions { display: none; }
+
+  .inserts { padding: 0.6rem 1rem 0; margin: 0; }
+  /* ⚠️ `order` does nothing under display:block, which is why the map stayed at
+     the bottom the first time this was written. Flex column, and the order
+     below is the order of the questions: where is it, what is in there, and
+     only then how the insert itself is doing. */
+  main { display: flex; flex-direction: column; padding: 0 0.85rem; }
+  .panel { margin: 0.7rem 0; padding: 0.9rem 0.95rem; }
+  .panel[data-tab] { display: none; }
+  body[data-tab="bag"] .panel[data-tab="bag"],
+  body[data-tab="enrol"] .panel[data-tab="enrol"],
+  body[data-tab="activity"] .panel[data-tab="activity"] { display: block; }
+
+  /* The bag first, and as big as the glass allows. */
+  .panel.wide { order: -1; margin-top: 0.5rem; }
+  #map-wrap svg { max-height: 52vh; max-width: none; }
+  /* Status is a strip under the map, not a definition list of six rows. */
+  #status-panel { order: 9; }
+  /* Six labelled rows of telemetry is a diagnostics screen, not a first
+     impression: on a phone it reads as two columns of small type at the end. */
+  #status-panel dl { grid-template-columns: auto 1fr auto 1fr; font-size: 0.86rem; }
+  #status-panel h2 { font-size: 0.72rem; }
+
+  .tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    background: var(--panel); border-top: 1px solid var(--line);
+    padding: 0.45rem 0.4rem calc(0.45rem + env(safe-area-inset-bottom));
+  }
+  .tabs button {
+    background: none; border: 0; color: var(--dim); font: inherit;
+    font-size: 0.82rem; padding: 0.5rem 0; border-radius: 10px;
+  }
+  .tabs button.on { color: var(--fg); background: rgba(127, 127, 127, 0.12); }
+}
+@media (min-width: 601px) { .tabs { display: none !important; } }

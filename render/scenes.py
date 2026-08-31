@@ -49,18 +49,24 @@ def parse_args():
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     # ⚠️ `--width 1280` leaves "1280" among the positional arguments: without
     # skipping the value that follows a flag, it got taken for a scene name.
+    # ⚠️ Flags that take no value must say so, or the argument AFTER them is
+    # swallowed as if it were theirs: `press --no-callouts --width 1920` ate
+    # "--width" and then read "1920" as a scene name.
+    BARE = {"--no-callouts"}
     scenes, skip = [], False
     for x in a:
         if skip:
             skip = False
         elif x.startswith("-"):
-            skip = True
+            skip = x not in BARE
         else:
             scenes.append(x)
     scenes = scenes or ["all"]
 
     def val(n, d):
         return int(a[a.index(n) + 1]) if n in a else d
+    global NO_CALLOUTS
+    NO_CALLOUTS = "--no-callouts" in a
     return scenes, val("--width", 1920), val("--samples", 48), val("--threads", 5)
 
 
@@ -483,6 +489,9 @@ def radar_beams(mat_):
     return cones
 
 
+NO_CALLOUTS = False        # set by --no-callouts; see scene "press"
+
+
 def callout(label, anchor_mm, dx=0.20, dz=0.0, size=0.011):
     """A 3D caption aligned to the camera, with its own leader line.
 
@@ -493,7 +502,14 @@ def callout(label, anchor_mm, dx=0.20, dz=0.0, size=0.011):
 
     ⚠️ Call it AFTER `camera_at`: the orientation is copied from the camera, and
     if the camera does not exist yet the text comes out facing sideways.
+
+    ⛔ AND SOMETIMES THE TEXT IS THE PROBLEM. A crowdfunding thumbnail is shown
+    at a few hundred pixels wide in a feed; Kickstarter asks for no text in it
+    at all, because at that size a leader line and an 11 pt label are noise that
+    reads as clutter. --no-callouts renders the same scene without them.
     """
+    if NO_CALLOUTS:
+        return
     cam = bpy.context.scene.camera
     right = cam.matrix_world.to_3x3() @ mathutils.Vector((1, 0, 0))
     up = cam.matrix_world.to_3x3() @ mathutils.Vector((0, 1, 0))
@@ -734,15 +750,21 @@ def scene_exploded(m):
         callout(label, (118, 0, z), dx=0.050, size=0.0088)
 
 
-def scene_section(m):
+def scene_section(m, dist=1.38):
     """The bag opened in section: this is the image that explains the product."""
     cuttable = []
+    # ⛔ THE HANDLES WERE THE ONE THING THE SECTION DID NOT CUT. Everything else
+    # here is handed to the cutter and the handles were loaded next to it, so the
+    # front strap stayed whole and ran straight through the opening the cut had
+    # just made — a leather loop passing through leather, in the render this
+    # project points at to explain the product. A section plane goes through
+    # whatever is in its way.
     for n, k in (("bag_body", "leather"), ("bag_hardware", "gold"),
+                 ("bag_handles", "leather"),
                  ("insert_walls", "microfibre"),
                  ("insert_collar", "microfibre"),
                  ("insert_base", "microfibre"), ("insert_floor", "fsr_film")):
         cuttable.append(load_stl(n, m[k], Z_INSERT if n.startswith("insert") else 0))
-    load_stl("bag_handles", m["leather"])
     load_stl("battery", m["lipo"], Z_INSERT)
     load_stl("qi_coil", m["copper"], Z_INSERT - 6)
     load_stl("insert_dividers", m["microfibre_dark"], Z_INSERT)
@@ -771,7 +793,7 @@ def scene_section(m):
     # the image shows an empty shell instead of the contents.
     light("interior", (0.09, -0.05, 0.235), 4.5, 0.10, (0.02, 0.0, 0.05),
           colour=(1.0, 0.93, 0.86))
-    camera_at((0.015, -0.015, 0.122), 1.38, -52, 18, focal=78)
+    camera_at((0.015, -0.015, 0.122), dist, -52, 18, focal=78)
     # ⚠️ No callout for the FSR cable: in this framing it runs behind the
     # front-left panel, which the section does NOT remove. An arrow pointing at
     # a piece of closed leather is worse than no arrow — the cable is visible in
@@ -819,7 +841,25 @@ def scene_collar(m):
 
 # (function, width, height) at the reference scale. ⚠️ The exploded view is a
 # 40 cm vertical stack: in 16:9 it either runs out of frame or becomes tiny.
+def scene_press(m):
+    """The section shot, framed for a 16:9 thumbnail and carrying no text.
+
+    ⭐ Same scene, two jobs. The section render exists to EXPLAIN — it is tall,
+    it leaves a column of empty backdrop on the right, and four labels point
+    into it. A thumbnail has to do the opposite: fill the frame, survive being
+    shrunk to the width of a phone listing, and say what the product is without
+    a single word, because at that size words are texture.
+    """
+    # ⚠️ Not "usually run with --no-callouts": a `press` render with text on it is
+    # not a press render, and `scenes.py -- all` would have produced exactly that
+    # — it did, once. The scene turns the labels off itself.
+    global NO_CALLOUTS
+    NO_CALLOUTS = True
+    scene_section(m, dist=1.17)
+
+
 SCENES = {"hero": (scene_hero, 1920, 1080),
+          "press": (scene_press, 1920, 1080),
           "exploded": (scene_exploded, 1800, 1900),
           "section": (scene_section, 1920, 1180),
           "collar": (scene_collar, 1920, 1080)}

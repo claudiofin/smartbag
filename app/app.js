@@ -24,6 +24,7 @@
  */
 import * as proto from './protocol.js';
 import { SimulatedInsert, INSERT_DIMENSIONS } from './sim.js';
+import { silhouette } from './icons.js';
 
 const SERVICE_UUID = '5342a000-0000-1000-8000-00805f9b34fb';   /* placeholder */
 const CHARS = {
@@ -64,65 +65,132 @@ function ageLine(map) {
 }
 
 /* ── the map ─────────────────────────────────────────────────────────────── */
-function renderMap(map, labelFor) {
-  const { w, d } = INSERT_DIMENSIONS;
-  const pad = 8;
-  const W = w + pad * 2, H = d + pad * 2;
+/* The bag, in millimetres, straight out of dimensions.py. Front elevation:
+ * x across the width, z up from the floor the bag stands on. */
+const BAG = {
+  wBottom: 240, wTop: 276, h: 190, mouth: 245, handleZ: 176, leather: 3.5,
+  insW: 225, insH: 179.6, floor: 13.1,   /* leather + power plate + sensing floor */
+};
+
+function bagOutline() {
+  const b = BAG, xb = b.wBottom / 2, xt = b.wTop / 2, xm = b.mouth * 0 + 100;
+  /* ⚠️ SVG y runs down and the bag is described upwards, so every z becomes
+   * TOP - z. Doing that once here is the only reason the path below reads like
+   * the dimensions it came from. */
+  const Y = (z) => 320 - z;
+  return `
+    M ${-xb + 16} ${Y(0)}
+    a 16 16 0 0 1 -16 -16
+    L ${-xt} ${Y(b.h)}
+    C ${-xt} ${Y(b.h + 30)} ${-xm - 14} ${Y(b.mouth - 12)} ${-xm} ${Y(b.mouth)}
+    L ${xm} ${Y(b.mouth)}
+    C ${xm + 14} ${Y(b.mouth - 12)} ${xt} ${Y(b.h + 30)} ${xt} ${Y(b.h)}
+    L ${xb} ${Y(16)}
+    a 16 16 0 0 1 -16 16
+    Z`;
+}
+
+function renderMap(map, labelFor, classFor) {
+  const b = BAG;
+  const Y = (z) => 320 - z;
+  const VB = { x: -152, y: 12, w: 304, h: 324 };
   const placed = map ? map.entries.filter((e) => e.placed) : [];
   const vague = map ? map.entries.filter((e) => !e.placed) : [];
 
-  /* ⭐ An unplaced object is drawn where it actually is known to be: inside its
-   * third of the insert, filling it, with its name in the middle. That is the
-   * honest shape of the answer — a region, not a point — and it has to look
-   * like a deliberate state rather than like a failed render, because after any
-   * walk it is the state the app is normally in. */
+  /* ⭐ THE BAG IS DRAWN AS THE BAG. Not a rectangle standing in for one and not
+   * a plan view: the outline below is 240 mm across the base, 276 at the top of
+   * the body and 245 tall to the rim, because those are the numbers the CAD and
+   * every render in this repository are built from. Someone holding the thing
+   * should recognise it. */
+  /* ⭐ THE EMPTY HALF OF THE BAG IS NOT EMPTY. A wallet is 88 mm tall in a 245 mm
+   * bag, so the top of every honest drawing of this product is air — and it is
+   * the air the sensors look through. Drawing the collar band and what it sees
+   * fills that space with the mechanism instead of leaving it blank, and it is
+   * the same picture as the section render: two beams from the ends, one
+   * downward field from the middle. */
+  const collarTop = b.leather + b.insH, collarBot = collarTop - 20;
+  const sensing = `
+    <rect x="${-b.insW / 2}" y="${Y(collarTop)}" width="${b.insW}" height="${20}"
+          rx="4" fill="var(--accent)" opacity="0.10"/>
+    <rect x="${-b.insW / 2 + 6}" y="${Y(collarBot + 12)}" width="${b.insW - 12}"
+          height="4" rx="1.4" fill="var(--accent)" opacity="0.55"/>
+    <path d="M ${-88} ${Y(collarBot)} L ${-34} ${Y(b.floor)} L ${-142 + 34} ${Y(b.floor)} Z"
+          fill="var(--accent)" opacity="0.055"/>
+    <path d="M ${88} ${Y(collarBot)} L ${34} ${Y(b.floor)} L ${142 - 34} ${Y(b.floor)} Z"
+          fill="var(--accent)" opacity="0.055"/>
+    <path d="M ${-14} ${Y(collarBot)} L ${-58} ${Y(b.floor)} L ${58} ${Y(b.floor)}
+             L ${14} ${Y(collarBot)} Z" fill="var(--accent)" opacity="0.05"/>`;
+
+  const shell = `
+    <path d="${bagOutline()}" fill="var(--accent)" opacity="0.05"/>
+    <path d="${bagOutline()}" fill="none" stroke="var(--line)" stroke-width="1.4"/>
+    <path d="M ${-58} ${Y(b.handleZ)} C ${-58} ${Y(300)} ${58} ${Y(300)} ${58} ${Y(b.handleZ)}"
+          fill="none" stroke="var(--line)" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="${-100}" y1="${Y(b.mouth)}" x2="${100}" y2="${Y(b.mouth)}"
+          stroke="var(--line)" stroke-width="1.4" stroke-dasharray="3 3"/>
+    <rect x="${-b.insW / 2}" y="${Y(b.leather + b.insH)}" width="${b.insW}"
+          height="${b.insH}" rx="7" fill="none" stroke="var(--line)"
+          stroke-width="0.8" opacity="0.55"/>
+    ${sensing}
+    <line x1="${-b.insW / 2}" y1="${Y(b.floor)}" x2="${b.insW / 2}" y2="${Y(b.floor)}"
+          stroke="var(--accent)" stroke-width="1.6" opacity="0.5"/>`;
+
+  /* An object the insert has not placed is known to be in its third of the bag
+   * and nowhere more precise. A tinted third is the honest shape of that. */
   const inBand = new Map();
   for (const e of vague) {
-    const k = e.compartment > 2 ? 3 : e.compartment;
+    const k = e.compartment > 2 ? 2 : e.compartment;
     inBand.set(k, [...(inBand.get(k) || []), labelFor(e.id)]);
   }
   const bands = [0, 1, 2].map((i) => {
-    const x = pad + (i * w) / 3;
+    const x = -b.insW / 2 + (i * b.insW) / 3;
     const who = inBand.get(i) || [];
-    const fill = who.length
-      ? `<rect x="${x + 1.5}" y="${pad + 1.5}" width="${w / 3 - 3}" height="${d - 3}"
-           rx="3" fill="var(--accent)" opacity="0.13"/>`
-      : '';
-    const text = who.map((label, k) => `
-      <text x="${x + w / 6}" y="${pad + d / 2 + (k - (who.length - 1) / 2) * 9 + 2.5}"
-        text-anchor="middle" font-size="7" fill="var(--fg)">${escape(label)}</text>`).join('');
-    return `<rect x="${x}" y="${pad}" width="${w / 3}" height="${d}" rx="3"
-      fill="none" stroke="var(--line)"/>${fill}${text}`;
+    if (!who.length) return '';
+    return `<rect x="${x + 2}" y="${Y(b.floor)}" width="${b.insW / 3 - 4}"
+        height="${b.floor + 140 - b.floor}" rx="4" fill="var(--accent)" opacity="0.12"
+        transform="translate(0 ${-140})"/>` + who.map((label, k) => `
+      <text x="${x + b.insW / 6}" y="${Y(b.floor + 60) + k * 10}" text-anchor="middle"
+        font-size="9" fill="var(--fg)">${escape(label)}</text>`).join('');
   }).join('');
 
-  /* The halo grows with staleness: a dot you should trust less is literally
-   * less of a dot. It never becomes a sharp dot in the wrong place. */
-  const halo = 3 + (map ? map.staleness : 0) / 14;
-  const dots = placed.map((e) => `
-    <circle cx="${pad + e.x}" cy="${pad + e.y}" r="${halo}"
-      fill="var(--accent)" opacity="0.18"/>
-    <circle cx="${pad + e.x}" cy="${pad + e.y}" r="2.6" fill="var(--accent)"/>
-    <text x="${pad + e.x}" y="${pad + e.y - halo - 3}" text-anchor="middle"
-      font-size="6.5" fill="var(--fg)">${escape(labelFor(e.id))}</text>`).join('');
+  /* ⚠️ Depth is measured and has nowhere to go in a front view, so it is spent
+   * on the two things a front view can say: what is nearer is drawn slightly
+   * larger and slightly more solid. Back to front, so the nearer object wins
+   * the overlap — which is also what your eye would see through the opening. */
+  const soft = map ? Math.min(0.5, map.staleness / 2400) : 0;
+  const LINE = 11;
+  const taken = [];
+  const objects = [...placed].sort((p, q) => q.y - p.y).map((e) => {
+    const cx = -b.insW / 2 + e.x;
+    const depth = Math.min(1, Math.max(0, e.y / 78));
+    const k = 1 - 0.12 * depth;
+    const text = labelFor(e.id);
+    const { h, markup } = silhouette(classFor(e.id), 0, 0);
+    const top = Y(b.floor + h * k);
+    const halfW = Math.max(14, text.length * 3.1);
+    let ly = top - 5;
+    for (const cand of [ly, ly - LINE, ly - LINE * 2, ly - LINE * 3]) {
+      const box = [cx - halfW, cx + halfW, cand - LINE * 0.8, cand + 2];
+      const clash = taken.some((t) => box[0] < t[1] && t[0] < box[1]
+                                   && box[2] < t[3] && t[2] < box[3]);
+      if (!clash) { taken.push(box); ly = cand; break; }
+    }
+    ly = Math.max(ly, VB.y + 10);
+    return `<g transform="translate(${cx} ${Y(b.floor)}) scale(${k})"
+               fill="var(--accent)" fill-opacity="${(0.26 - soft * 0.22) * (1.15 - depth * 0.35)}"
+               stroke="var(--accent)" stroke-width="${1.3 / k}"
+               stroke-opacity="${(1 - soft) * (1 - depth * 0.35)}"
+               stroke-linejoin="round" stroke-linecap="round">${markup}</g>
+      <text x="${cx}" y="${ly}" text-anchor="middle" font-size="10"
+        fill="var(--fg)" opacity="0.94" paint-order="stroke"
+        stroke="var(--panel)" stroke-width="3.5" stroke-linejoin="round"
+        >${escape(text)}</text>`;
+  }).join('');
 
   $('map-wrap').innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" role="img"
-       aria-label="plan of the insert, ${placed.length} of ${placed.length + vague.length} objects placed">
-       ${bands}${dots}</svg>`;
-
-  const names = ['left', 'middle', 'right'];
-  const parts = [];
-  if (placed.length) {
-    parts.push(`${placed.length} placed to within a centimetre or so.`);
-  }
-  if (vague.length) {
-    /* ⚠️ Named in the plan above, summarised here. Dropping these objects
-     * because their coordinates were withheld would be the app inventing an
-     * emptier bag than the device reported. */
-    const where = [...inBand.keys()].map((k) => (k > 2 ? 'somewhere inside' : `the ${names[k]} third`));
-    parts.push(`${vague.length} not measured well enough to place — known only to ${where.join(' and ')}.`);
-  }
-  $('map-caption').textContent = parts.join(' ') || 'Nothing to place.';
+    `<svg viewBox="${VB.x} ${VB.y} ${VB.w} ${VB.h}" role="img"
+       aria-label="the bag seen from the front, ${placed.length} of ${placed.length + vague.length} objects placed">
+       ${shell}${bands}${objects}</svg>`;
 }
 
 const escape = (s) => String(s).replace(/[<>&]/g, (c) =>
@@ -151,6 +219,12 @@ function render() {
     ['link', current.simulated ? 'simulated' : 'BLE'],
   ].map(([k, v]) => `<dt>${k}</dt><dd>${escape(v)}</dd>`).join('');
 
+  // The app bar says the two things you look at a bag app to learn without
+  // reading it: which bag, and whether it is about to go flat.
+  document.body.classList.add('attached');
+  $('appbar-sub').textContent = st.info
+    ? `${current.name} · ${st.info.battery}%` : current.name;
+
   const items = st.inventory ? st.inventory.items : [];
   $('count').textContent = items.length ? `${items.length} objects` : '';
   $('inventory').innerHTML = items.length
@@ -162,7 +236,11 @@ function render() {
   const [line, cls] = ageLine(st.position);
   $('map-age').textContent = line;
   $('map-age').className = `age ${cls}`;
-  renderMap(st.position, (id) => current.labelFor(id));
+  // ⚠️ The class comes from the INVENTORY, not the position map: the map
+  // carries ids and coordinates, and what an object is belongs to the ledger.
+  const klassOf = new Map(items.map((it) => [it.id, it.className]));
+  renderMap(st.position, (id) => current.labelFor(id),
+            (id) => klassOf.get(id) || 'unknown');
 
   document.querySelectorAll('.sim-only').forEach((el) => {
     el.style.display = current.simulated ? '' : 'none';
@@ -309,7 +387,28 @@ function banner(text) {
   if (text) $('banner').textContent = text;
 }
 
-/* Start with something on screen: an empty app cannot be judged. */
-attach(new SimulatedInsert('Work tote'));
+/* Start with something on screen: an empty app cannot be judged.
+ *
+ * ⭐ `?demo=5` seeds a bag with five things in it and no event log, which is what
+ * a screenshot of this app should show — the state it is in for the other 23
+ * hours of the day, rather than the state it is in one second after being
+ * opened. It is the same simulator and the same code path; the only thing the
+ * parameter does is decide how many objects are already there. */
+const demo = Math.min(6, Math.max(0, +new URLSearchParams(location.search).get('demo') || 0));
+attach(new SimulatedInsert('Work tote', demo ? { seedObjects: demo } : {}));
 simCount = 1;
-log('simulated insert attached');
+if (!demo) log('simulated insert attached');
+
+/* ⭐ The phone shell: three tabs over the panels that are already on the page.
+ * It sets one attribute — the CSS does the rest — so there is no second layout
+ * to keep in step with the first. */
+const tabs = $('tabs');
+document.body.dataset.tab = 'bag';
+tabs.hidden = false;
+tabs.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-tab]');
+  if (!b) return;
+  document.body.dataset.tab = b.dataset.tab;
+  tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  window.scrollTo(0, 0);
+});

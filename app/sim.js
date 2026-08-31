@@ -12,8 +12,13 @@
  * A simulator free to invent its own wire format would be worth nothing.
  */
 import {
-  PROTOCOL_VERSION, POS_UNKNOWN, CONFIDENCE_FLOOR,
+  PROTOCOL_VERSION, POS_UNKNOWN, CONFIDENCE_FLOOR, CLASSES,
 } from './protocol.js';
+/* ⚠️ A footprint is a property of the OBJECT, not of the drawing — how much of
+ * a 225 x 78 mm floor a wallet takes up is why two of them do not fit side by
+ * side. It lives next to the map because that is the only other thing that
+ * needs it, and it is imported here rather than copied. */
+import { FOOTPRINT } from './icons.js';
 
 class Writer {
   constructor() { this.b = []; }
@@ -112,13 +117,52 @@ export class SimulatedInsert {
   on(what, fn) { this.listeners[what].push(fn); return this; }
   #emit(what, bytes) { for (const fn of this.listeners[what]) fn(bytes); }
 
+  /* ⛔ TWO OBJECTS CANNOT OCCUPY THE SAME SPACE. Positions used to be a pair of
+   * random numbers, which put a pair of reading glasses through a makeup pouch
+   * and hung both over the edge of the insert. On a map that draws dots nobody
+   * notices; on one that draws the objects at their real size it is the first
+   * thing you see, and it is wrong in the plain physical sense.
+   *
+   * ⭐ Rejection sampling, sixty tries, keep the first spot whose footprint
+   * clears everything already in the bag — and if the bag is genuinely too full
+   * for that, keep the least bad one, because a real bag does let things touch. */
+  #place(klass) {
+    const [fw, fh] = FOOTPRINT[CLASSES[klass]] || FOOTPRINT.unknown;
+    const mx = Math.max(fw / 2 + 3, INSERT_W / 2 - Math.abs(INSERT_W / 2 - fw / 2 - 3));
+    const my = Math.max(fh / 2 + 3, INSERT_D / 2 - Math.abs(INSERT_D / 2 - fh / 2 - 3));
+    const rx = Math.max(0, INSERT_W - 2 * mx), ry = Math.max(0, INSERT_D - 2 * my);
+    const boxes = this.items.map((o) => {
+      const [ow, oh] = FOOTPRINT[CLASSES[o.klass]] || FOOTPRINT.unknown;
+      return [o.x - ow / 2, o.x + ow / 2, o.y - oh / 2, o.y + oh / 2];
+    });
+    /* ⚠️ "The first spot that does not overlap" is not the same as a spot that
+     * looks like a bag was packed. Random sampling clumps: four objects landed
+     * in the left half with the right half empty, which is a thing that can
+     * happen and not a thing that usually does. The score prefers distance from
+     * what is already there, so the contents spread the way they do when a hand
+     * puts them down. */
+    const centres = this.items.map((o) => [o.x, o.y]);
+    let best = null, bestScore = Infinity;
+    for (let i = 0; i < 120; i++) {
+      const x = mx + Math.random() * rx, y = my + Math.random() * ry;
+      const b = [x - fw / 2, x + fw / 2, y - fh / 2, y + fh / 2];
+      const overlap = boxes.reduce((sum, t) => sum
+        + Math.max(0, Math.min(b[1], t[1]) - Math.max(b[0], t[0]))
+        * Math.max(0, Math.min(b[3], t[3]) - Math.max(b[2], t[2])), 0);
+      const near = centres.length
+        ? Math.min(...centres.map(([px, py]) => Math.hypot(x - px, (y - py) * 0.5)))
+        : INSERT_W;
+      const score = overlap * 4 - Math.min(near, 90);
+      if (score < bestScore) { bestScore = score; best = [x, y]; }
+    }
+    return { x: Math.round(best[0]), y: Math.round(best[1]) };
+  }
+
   #add({ klass, label }) {
     const id = nextId++;
     this.items.push({
       id, klass, label, since: this.uptime, cameraConfirmed: true,
-      massOnly: false,
-      x: 20 + Math.floor(Math.random() * (INSERT_W - 40)),
-      y: 12 + Math.floor(Math.random() * (INSERT_D - 24)),
+      massOnly: false, ...this.#place(klass),
     });
     this.ledgerSeq++;
     return id;
@@ -175,9 +219,23 @@ export class SimulatedInsert {
   /* ── the scripted things a bag does ──────────────────────────────────── */
   openAndInsert() {
     this.#emit('event', encodeEvent(1, 0, this.uptime));
-    const pick = CATALOGUE[Math.floor(Math.random() * CATALOGUE.length)];
-    const id = this.#add(pick);
-    this.#emit('event', encodeEvent(3, id, this.uptime));
+    /* ⛔ AN OBJECT CANNOT BE IN THE BAG TWICE. This picked from the catalogue at
+     * random and did not look at what was already inside, so three taps of "put
+     * something in" could report three brown wallets. The real ledger is keyed
+     * on identity — the device recognises THIS wallet, not "a wallet" — so that
+     * inventory is one the hardware could never produce, and a demo that shows
+     * something the product cannot do is worse than one that shows less.
+     *
+     * ⚠️ And when everything in the catalogue is already inside, the bag is
+     * opened and closed with nothing added, which is also what happens in life. */
+    const held = new Set(this.items.map((o) => o.label));
+    const free = CATALOGUE.filter((c) => !held.has(c.label));
+    let id = null;
+    if (free.length) {
+      const pick = free[Math.floor(Math.random() * free.length)];
+      id = this.#add(pick);
+      this.#emit('event', encodeEvent(3, id, this.uptime));
+    }
     this.#emit('event', encodeEvent(2, 0, this.uptime));
     this.#emit('inventory', this.inventoryBytes());
     setTimeout(() => this.#remap(), 900);

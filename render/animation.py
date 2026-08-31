@@ -232,14 +232,20 @@ def emission(material, values):
 def _load_section_set(m):
     """The parts every section shot loads. Returns the cuttable ones."""
     cuttable = []
+    # ⛔ THE HANDLES WERE THE ONE THING THE SECTION DID NOT CUT. Everything else
+    # in the shot is passed to the cutter and the handles were loaded beside it,
+    # so the front strap stayed whole and ran straight through the opening the
+    # cut had just made — a leather loop passing through leather. A section
+    # plane goes through whatever is in its way, handles included.
     for name, k in (("bag_body", "leather"), ("bag_hardware", "gold"),
                     ("insert_walls", "microfibre"),
                     ("insert_collar", "microfibre"),
                     ("insert_base", "microfibre"),
-                    ("insert_floor", "fsr_film"), ("fsr_cable", "polyimide")):
+                    ("insert_floor", "fsr_film"), ("fsr_cable", "polyimide"),
+                    ("bag_handles", "leather")):
         dz = 0 if name.startswith("bag") else sc.Z_INSERT
         cuttable.append(sc.load_stl(name, m[k], dz))
-    sc.load_stl("bag_handles", m["leather"])
+
     sc.load_stl("battery", m["lipo"], sc.Z_INSERT)
     sc.load_stl("qi_coil", m["copper"], sc.Z_INSERT - 6)
     sc.load_stl("insert_dividers", m["microfibre_dark"], sc.Z_INSERT)
