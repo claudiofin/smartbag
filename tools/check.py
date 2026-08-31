@@ -262,6 +262,24 @@ check("the FFC has a way for every line plus a ground",
       f"{d.FSR_COLS} cols + {d.FSR_ROWS} rows + GND = {_ways} "
       f"into a {d.FSR_FFC_WAYS}-way connector")
 
+print("\n── the three boards agree about the cables between them")
+# ⛔ A FLEX CABLE IS A PROMISE BETWEEN TWO FILES. J1 on the insert board and J10
+# on the optics flex are the two ends of one cable; so are J4 and J20. Nothing
+# stops somebody inserting a pin on one end and not the other, and the failure
+# mode is not subtle — it puts VSYS into an interrupt input. These are declared
+# in different modules precisely so they can be compared.
+import optics_netlist as onl                                    # noqa: E402
+import taxel_netlist as tnl                                     # noqa: E402
+
+for a_mod, a_ref, b_mod, b_ref, cable in (
+        (nl, "J1", onl, "J10", "insert to optics"),
+        (nl, "J4", tnl, "J20", "insert to taxels")):
+    _a = {n: net for n, _pn, _t, net in a_mod.part(a_ref)[5]}
+    _b = {n: net for n, _pn, _t, net in b_mod.part(b_ref)[5]}
+    _diff = sorted(k for k in set(_a) | set(_b) if _a.get(k) != _b.get(k))
+    check(f"{a_ref} and {b_ref} agree pin for pin ({cable})", not _diff,
+          "; ".join(f"pin {k}: {_a.get(k)} vs {_b.get(k)}" for k in _diff))
+
 print("\n── the firmware's events have hardware that can raise them")
 # ⛔ THE CHECK THAT WAS MISSING FOR THE WHOLE PROJECT. firmware/smartbag.h
 # declares the events the wake-up chain runs on, and one of them —

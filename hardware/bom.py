@@ -159,12 +159,35 @@ BOM = {
         pdf=None, usd=None, stock="commodity", verdict="OK.",
     ),
     "J1": PART(
-        mpn="FH12-10S-0.5SH(55)", manufacturer="Hirose",
-        description="FFC connector, 10 way, 0.5 mm — the optics module",
-        package="FH12-10S", body=(9.4, 4.3, 1.0), pitch=0.5, pins=10,
-        datasheet="https://www.hirose.com/product/p/CL0580-1163-2-55",
+        mpn="FH12-12S-0.5SH(55)", manufacturer="Hirose",
+        description="FFC connector, 12 way, 0.5 mm — the optics flex",
+        package="FH12-12S", body=(10.4, 4.3, 1.0), pitch=0.5, pins=12,
+        datasheet="https://www.hirose.com/product/p/CL0580-1165-8-55",
         pdf=None, usd=None, stock="commodity",
-        verdict="OK. ⚠️ The camera on the other end of it is NOT a chosen part.",
+        verdict="OK — twelve ways, not ten. It grew when the time-of-flight "
+                "sensor the firmware had always assumed finally got a "
+                "schematic: its I2C, shutdown and interrupt cross this cable.",
+    ),
+    "Q1": PART(
+        mpn="SI2302CDS-T1-GE3", manufacturer="Vishay",
+        description="Logic-level N-channel MOSFET — the illuminator switch",
+        package="SOT-23", body=(2.9, 1.3, 1.1), pitch=0.95, pins=3,
+        datasheet="https://www.vishay.com/docs/70573/si2302cds.pdf",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK. ⭐ It exists because thermal/budget.py has been costing "
+                "0.6 W of illuminator for 10 ms since before the board had any "
+                "way to switch it — that is 160 mA, an order of magnitude past "
+                "what a GPIO will source.",
+    ),
+    "Y4": PART(
+        mpn="ABS07-32.768KHZ-9-T", manufacturer="Abracon",
+        description="32.768 kHz crystal, Cl = 9 pF — the low-power timebase",
+        package="SMD-2012-2", body=(2.0, 1.2, 0.6), pitch=None, pins=2,
+        datasheet="https://abracon.com/Resonators/abs07.pdf",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK. ⭐ Not decoration: the app puts an age on every position it "
+                "reports, and the SoC's internal RC is ±500 ppm — 43 seconds a "
+                "day. A claim about a clock deserves a clock.",
     ),
     "J4": PART(
         mpn="FH12-24S-0.5SH(55)", manufacturer="Hirose",
@@ -214,6 +237,61 @@ BOM = {
                 "placeholders in it, to be swept on a VNA.",
     ),
 }
+# ─── the optics flex ─────────────────────────────────────────────────────────
+# ⚠️ A SEPARATE BOARD, and these are its parts. J1 on the insert board has been
+# a connector to nothing since the first commit; this is what is on the other
+# end of it.
+OPTICS = {
+    "U10": PART(
+        mpn="VL53L1X", manufacturer="STMicroelectronics",
+        description="Time-of-flight ranging sensor, 940 nm, I2C, LGA-12",
+        package="LGA-12", body=(4.9, 2.5, 1.56), pitch=0.8, pins=12,
+        datasheet="https://www.st.com/resource/en/datasheet/vl53l1x.pdf",
+        pdf="VL53L1X_st.pdf", usd=None, stock="commodity",
+        verdict="⛔ THE PART THE WHOLE WAKE-UP CHAIN ASSUMED AND NOBODY DREW. "
+                "firmware/smartbag.h has declared SB_EV_TOF_CROSSED since the "
+                "first commit, dimensions.py places a sensor at TOF_X = 48, and "
+                "the films show it working — with no schematic anywhere "
+                "containing one. KiCad ships the footprint, so at least nothing "
+                "had to be hand-drawn. It is a Class 1 laser product and the "
+                "enclosure has to be labelled as one.",
+    ),
+    "D1..D4": PART(
+        mpn="VSMY1850X01", manufacturer="Vishay",
+        description="850 nm infrared emitter, 0805, Vf 1.65 V at 100 mA",
+        package="0805", body=(2.0, 1.25, 0.85), pitch=None, pins=2,
+        datasheet="https://www.vishay.com/docs/83397/vsmy1850.pdf",
+        pdf="VSMY1850_vishay.pdf", usd=None, stock="commodity",
+        verdict="OK. ⚠️ Four in PARALLEL with a resistor each, not two pairs in "
+                "series: two of these need 3.3 V before any current flows and a "
+                "LiPo spends half its life below that. ⚠️ And it is not a "
+                "current source — 51 ohm gives 49 mA at 4.2 V and 27 mA at 3.0, "
+                "so the scene dims by nearly half as the cell empties, while "
+                "ml/render_dataset.py trains at one brightness.",
+    ),
+    "J11": PART(
+        mpn="SM06B-SRSS-TB(LF)(SN)", manufacturer="JST",
+        description="SH series 6-pin 1.0 mm header — the camera module",
+        package="JST-SH-06", body=(8.25, 2.9, 2.9), pitch=1.0, pins=6,
+        datasheet="https://www.jst.com/wp-content/uploads/2021/01/eSH1.pdf",
+        pdf=None, usd=None, stock="commodity",
+        verdict="OK — six ways is the camera's whole interface.",
+    ),
+    "CAM": PART(
+        mpn="B0435 (Arducam Mega 3MP NoIR)", manufacturer="Arducam",
+        description="3 MP SPI camera module, M12 lens, no IR-cut filter",
+        package="module", body=(0, 0, 0), pitch=None, pins=6,
+        datasheet="https://docs.arducam.com/Arduino-SPI-camera/MEGA-SPI/MEGA-SPI-Camera/",
+        pdf=None, usd=None, stock="from Arducam directly",
+        verdict="⚠️ BOUGHT, NOT BUILT, and it is not on any of these three "
+                "boards — it hangs off J11 with its own lens and its own PCB. "
+                "⛔ Its 8 MHz SPI ceiling is a design constraint, not a detail: "
+                "ml/inference_budget.py works out that 96x96 grey takes 28 ms "
+                "for a three-frame burst and fits, while 320x240 RGB565 takes "
+                "461 ms and does not fit the firmware's 400 ms capture timeout.",
+    ),
+}
+
 # ── passives ─────────────────────────────────────────────────────────────────
 # ⛔ DERIVED, NOT MAINTAINED. This used to be a hand-written dict and it drifted
 # the moment the board changed: it still described a 10 uF capacitor at C6 after

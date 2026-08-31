@@ -37,6 +37,20 @@ grep -E "Found .* (DRC violations|unconnected pads|Footprint errors)" /tmp/smart
   | sed 's/^\*\* /  /;s/ \*\*$//'
 
 echo
+echo "== the other two boards =="
+# ⛔ THERE ARE THREE. The insert board is the one with the processor on it; the
+# optics flex carries the camera, the illuminators and the time-of-flight sensor
+# that arms the whole wake-up chain, and the taxel sheet carries 96 force-sensing
+# sites. Checking only the first would have been checking a third of the product.
+for _b in optics taxels; do
+  kicad-cli pcb drc --severity-error -o /tmp/sb_$_b.rpt \
+    hardware/smartbag_$_b.kicad_pcb >/dev/null 2>&1 || true
+  printf "  %-8s %s\n" "$_b" \
+    "$(grep -E 'Found .*(violations|unconnected pads)' /tmp/sb_$_b.rpt \
+       | sed 's/^\*\* //;s/ \*\*$//' | tr '\n' ' ')"
+done
+
+echo
 echo "== BOM vs footprints =="
 python3 tools/bom_report.py > /tmp/smartbag_bom.txt
 echo "  $(grep -cE '^  ok ' /tmp/smartbag_bom.txt) of $(grep -cE '^  (ok|⛔) ' /tmp/smartbag_bom.txt) named parts have a real MPN whose package fits"

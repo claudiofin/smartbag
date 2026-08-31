@@ -33,7 +33,9 @@ been built.
 | thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). It asked for charge current to be a function of cell temperature; the board now has an NTC and a PMIC that does exactly that. |
 | the taxel front end | measured wrong, then **fixed in hardware**: six transimpedance amplifiers and a 16:1 multiplexer — see [The taxel matrix](#the-taxel-matrix). |
 | the 2.4 GHz antenna | ⛔ its datasheet found **three errors** in this design, one of them a terminal tied to ground that the part marks NC — see [The antenna](#the-antenna). |
-| fabrication | Gerbers, drill, placement, the DRC report and a generated fab note: `tools/fab.sh`. |
+| the optics flex | **exists now.** J1 was a connector to nothing for the whole project: the camera, the illuminators and the ToF live here. DRC 0 errors, 2 unconnected pads. |
+| the taxel sheet | **exists now.** 96 interdigitated sites, 16 columns and 6 rows, no components. **DRC 0 errors, 0 unconnected pads.** |
+| fabrication | Gerbers, drill, placement, DRC reports and a generated fab note for **all three boards**: `tools/fab.sh`. |
 
 Run everything that can be checked:
 
@@ -46,8 +48,9 @@ Run everything that can be checked:
 == firmware ==             28 + 324 + 53 checks, 0 failures
 == protocol ==             15 tests passed
 == ERC ==                  0 violations
-== DRC ==                  0 errors · 10 unconnected pads · 0 footprint errors
-== BOM vs footprints ==    18 of 18 named parts have a real MPN whose package fits
+== DRC ==                  0 errors · 4 unconnected pads · 0 footprint errors
+== the other two boards == optics 0 errors, 2 pads · taxels 0 errors, 0 pads
+== BOM vs footprints ==    22 of 22 named parts have a real MPN whose package fits
 == recognition ==          ⭐ IT FITS, AND WITH ROOM
 == physics ==              ✅ the 60 GHz feed question is settled
                            ⛔ Charging as specified puts the cell over its limit.
@@ -664,6 +667,60 @@ on a VNA against a built board. Until that happens the BLE link budget is
 *unknown*, not *acceptable*, and the values are labelled `(tune)` in the BOM so
 nobody mistakes them for a result.
 
+## The other two boards
+
+For most of this project the insert board was the only one that existed, and it
+had two connectors going nowhere. ⛔ **J1 and J4 were promises to boards nobody
+had drawn** — which is why the firmware could depend on a time-of-flight sensor
+that appears in `dimensions.py`, in the films and in the state machine, and in no
+schematic anywhere.
+
+```bash
+python3 hardware/generate_board.py optics
+python3 hardware/generate_taxels.py
+```
+
+### The optics flex — 134 × 12 mm, 2 layers
+
+Everything on the sensing side of the product: the **VL53L1X** whose beam across
+the mouth raises `SB_EV_TOF_CROSSED`, four **VSMY1850X01** 850 nm emitters, and a
+six-way header for the **Arducam Mega 3MP NoIR** that does the recognising. It
+folds into the collar of the bag. DRC: 0 errors, 2 unconnected pads.
+
+⚠️ **The illuminators are not a current source.** 51 Ω gives 49 mA at a full
+4.2 V cell and 27 mA at 3.0 V — the scene dims by nearly half as the battery
+empties, while `ml/render_dataset.py` renders its training set at one brightness.
+A current sink would fix it and costs a part. This is recorded, not hidden.
+
+### The taxel sheet — 96 sites, no components
+
+⭐ **How a cheap FSR matrix is actually built, which is not what a schematic would
+lead you to draw.** There is no part per taxel. Each site is a pair of
+**interdigitated combs** on one copper layer facing a sheet of piezoresistive
+film; press, and the film bridges them, and the resistance falls with the contact
+area. One comb belongs to a column, the other to a row.
+
+⚠️ The film is **not on this board** — what ships from the fabricator is copper
+and polyimide. Laminating a piezoresistive sheet with a spacer is an assembly
+step and a BOM line, and it is written on the Cmts.User layer rather than assumed.
+
+**It took eleven DRC rounds to get from 256 violations to zero**, and every one
+of them was a real geometric mistake rather than a rule that needed relaxing:
+
+| what was wrong | how it showed up |
+|---|---|
+| `generate_pcb.copper_rect()` emits a **netless** `gr_poly` — it exists to draw antenna patches, where a net would be meaningless | 116 shorts: netless copper over a matrix shorts every electrode to every other |
+| the combs' teeth ran the full width of the taxel, into the opposite spine | 96 more shorts, one per site — the whole matrix a dead short |
+| both combs had their spine on the same side | every row riser landed on a column spine |
+| a **straight fan-out is geometrically impossible** here: two nearly-horizontal traces 0.5 mm apart at the connector are 0.05 mm apart *perpendicular* | 16 shorts, and no tab height fixes it — 0.4 mm of clearance would need 140 mm of vertical run |
+| lane ordering is **forced, not free** | the line travelling furthest must get the deepest lane, or the drop from a pad crosses the lanes inside it |
+| lane pitch 0.55 mm against a 0.8 mm bus | 14 shorts at exactly zero clearance |
+| the ground tie left its pad 0.8 mm wide on a 0.5 mm pitch | it touched both neighbours before going anywhere |
+
+⭐ And `tools/check.py` now asserts that **J1 matches J10 and J4 matches J20 pin
+for pin**. A flex cable is a promise between two files, and the failure mode when
+they disagree is VSYS arriving at an interrupt input.
+
 ## Fabrication
 
 ```bash
@@ -945,6 +1002,13 @@ render/build_video.py        assembly, captions, fades, ffmpeg
 tools/pipeline.sh            the full chain (stills)
 tools/render_animation.sh    the film frames
 tools/render_pcb.sh          board renders only
+hardware/generate_board.py   the optics flex (a second, simpler board generator)
+hardware/generate_taxels.py  the 96-site force-sensing sheet: pure geometry
+hardware/optics_netlist.py   camera, illuminators and the time-of-flight sensor
+hardware/taxel_netlist.py    one connector and 22 nets; the rest is copper
+hardware/place.py            settles 99 hand-typed positions so no courtyards touch
+hardware/stitch.py           ties orphaned ground islands back to the plane
+ml/inference_budget.py       does the model fit a 128 MHz M33? counted, not guessed
 hardware/specctra.py         DSN out / SES in, plus the fixes the router needs
 hardware/place.py            a floorplan is a hint; this makes it a placement
 hardware/stitch.py           ties orphaned ground islands back to the plane

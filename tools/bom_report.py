@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(ROOT, "hardware"))
 
 import bom                              # noqa: E402
 import netlist as nl                    # noqa: E402
+import optics_netlist as onl            # noqa: E402
 import generate_pcb as pcb              # noqa: E402
 
 FP_LIB = pcb._footprint_library()
@@ -79,8 +80,14 @@ def main():
     print("BOM vs footprints — measured, not asserted\n")
     rows, problems = [], []
 
-    for ref, val, sym, lib, fp, pins, x, y in nl.PARTS:
-        entry = bom.BOM.get(ref)
+    # ⚠️ Both boards, one check. The optics flex carries three of the parts
+    # that decide whether this product works at all — the sensor that arms the
+    # camera, the emitters that let it see, and the connector the camera hangs
+    # off — and checking only the insert board would have left them unverified.
+    catalogue = dict(bom.BOM)
+    catalogue.update(bom.OPTICS)
+    for ref, val, sym, lib, fp, pins, x, y in list(nl.PARTS) + list(onl.PARTS):
+        entry = catalogue.get(ref)
         if entry is None:
             continue
         pads, cx, cy = measure(lib, fp)

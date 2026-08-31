@@ -6,18 +6,22 @@ BOM vs footprints — measured, not asserted
   ok U3   NPM1300-QEAA-R7        QFN32      datasheet  32 pins / 5.0x5.0 mm   footprint  33 pins /   6.6x6.3 mm
   ok U4   BMI270                 LGA-14     datasheet  14 pins / 2.5x3.0 mm   footprint  14 pins /   3.8x3.3 mm
   ok U5   DRV5032FBDBZR          SOT-23-3   datasheet   3 pins / 2.92x2.37 mm   footprint   3 pins /   3.9x3.4 mm
+  ok Q1   SI2302CDS-T1-GE3       SOT-23     datasheet   3 pins / 2.9x1.3 mm   footprint   3 pins /   3.9x3.4 mm   [pdf not archived]
   ok U7   CD74HC4067SM96         SSOP-24    datasheet  24 pins / 5.3x8.2 mm   footprint  24 pins /   9.4x8.9 mm
   ok U8   TLV9064IPWR            TSSOP-14   datasheet  14 pins / 4.4x5.0 mm   footprint  14 pins /   7.7x5.6 mm   [pdf not archived]
   ok U9   TLV9064IPWR            TSSOP-14   datasheet  14 pins / 4.4x5.0 mm   footprint  14 pins /   7.7x5.6 mm   [pdf not archived]
   ok Y1   ABM8-32.000MHZ-B2-T    SMD-2016-4 datasheet   4 pins / 2.0x1.6 mm   footprint   4 pins /   3.0x2.6 mm   [pdf not archived]
+  ok Y4   ABS07-32.768KHZ-9-T    SMD-2012-2 datasheet   2 pins / 2.0x1.2 mm   footprint   2 pins /   3.0x2.2 mm   [pdf not archived]
   ok Y2   ABM8-24.000MHZ-B2-T    SMD-2016-4 datasheet   4 pins / 2.0x1.6 mm   footprint   4 pins /   3.0x2.6 mm   [pdf not archived]
   ok Y3   ABM8-24.000MHZ-B2-T    SMD-2016-4 datasheet   4 pins / 2.0x1.6 mm   footprint   4 pins /   3.0x2.6 mm   [pdf not archived]
-  ⛔  J1   FH12-10S-0.5SH(55)     FH12-10S   datasheet  10 pins / 9.4x4.3 mm   footprint  12 pins /  12.1x7.9 mm   [pdf not archived]
+  ok J1   FH12-12S-0.5SH(55)     FH12-12S   datasheet  12 pins / 10.4x4.3 mm   footprint  12 pins /  12.1x7.9 mm   [pdf not archived]
   ok J4   FH12-24S-0.5SH(55)     FH12-24S   datasheet  24 pins / 16.4x4.3 mm   footprint  24 pins /  18.1x7.9 mm   [pdf not archived]
   ok J2   SM02B-SRSS-TB(LF)(SN)  JST-SH-02  datasheet   2 pins / 4.25x2.9 mm   footprint   2 pins /   5.8x6.6 mm   [pdf not archived]
   ok J3   SM02B-SRSS-TB(LF)(SN)  JST-SH-02  datasheet   2 pins / 4.25x2.9 mm   footprint   2 pins /   5.8x6.6 mm   [pdf not archived]
   ok J5   SM04B-SRSS-TB(LF)(SN)  JST-SH-04  datasheet   4 pins / 6.25x2.9 mm   footprint   4 pins /   7.8x6.6 mm   [pdf not archived]
   ok AE1  2450AT43F0100E         SMD chip   datasheet   2 pins / 6.0x2.0 mm   footprint   2 pins /   7.4x2.7 mm   [pdf not archived]
+  ok U10  VL53L1X                LGA-12     datasheet  12 pins / 4.9x2.5 mm   footprint  12 pins /   5.5x3.1 mm
+  ok J11  SM06B-SRSS-TB(LF)(SN)  JST-SH-06  datasheet   6 pins / 8.25x2.9 mm   footprint   6 pins /   9.8x6.6 mm   [pdf not archived]
 
   availability, as of 2026-08-30 — a snapshot, not a promise:
      U1   LCSC C42458750, $3.99/1, $2.72/100, out of stock 2026-08-30
@@ -26,10 +30,12 @@ BOM vs footprints — measured, not asserted
      U3   LCSC C7501206, $1.75/1, $1.66/100, out of stock 2026-08-30
      U4   commodity, widely stocked
      U5   commodity, widely stocked
+     Q1   commodity
      U7   commodity
      U8   commodity
      U9   commodity
      Y1   commodity
+     Y4   commodity
      Y2   commodity
      Y3   commodity
      J1   commodity
@@ -38,6 +44,8 @@ BOM vs footprints — measured, not asserted
      J3   commodity
      J5   commodity
      AE1  commodity
+     U10  commodity
+     J11  commodity
 
   73 passives in 21 distinct values, derived from the netlist:
      0402           0.3p C0G               x1   C11
@@ -61,11 +69,6 @@ BOM vs footprints — measured, not asserted
      0402           6.8k 1%                x1   R10
      0402           8.2k 1%                x6   R40 R41 R42 R43 R44 R45
      0402           8p NP0                 x4   C24 C25 C34 C35
-
-⛔ 1 parts the board cannot accept as drawn:
-
-   J1: OK. ⚠️ The camera on the other end of it is NOT a chosen part.
-
 ⚠️ 3 things the design needs and the board has not got:
 
    - a camera module

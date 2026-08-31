@@ -14,6 +14,28 @@ OUT="${1:-fab}"
 BOARD=hardware/smartbag_core.kicad_pcb
 rm -rf "$OUT"; mkdir -p "$OUT/gerbers"
 
+# ⛔ THREE BOARDS SHIP, NOT ONE. The insert board is the one with the processor;
+# the optics flex carries the camera, the illuminators and the sensor that arms
+# the wake-up chain; the taxel sheet carries 96 force-sensing sites. A package
+# with only the first in it is a package for a third of a product.
+plot_extra() {
+  local stem=$1 dir="$OUT/$2"
+  mkdir -p "$dir"
+  kicad-cli pcb export gerbers --output "$dir/" \
+    --layers "F.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts" \
+    --subtract-soldermask --check-zones --no-protel-ext \
+    "hardware/$stem.kicad_pcb" >/dev/null
+  kicad-cli pcb export drill --output "$dir/" --format excellon \
+    --excellon-separate-th --generate-map --map-format gerberx2 \
+    --excellon-units mm --drill-origin absolute "hardware/$stem.kicad_pcb" >/dev/null
+  kicad-cli pcb export pos --output "$dir/$2.pos" --side front --format csv \
+    --units mm --use-drill-file-origin "hardware/$stem.kicad_pcb" >/dev/null 2>&1 || true
+  kicad-cli pcb drc --severity-error -o "$dir/drc-report.txt" \
+    "hardware/$stem.kicad_pcb" >/dev/null 2>&1 || true
+  echo "  $2: $(grep -E 'Found .*(violations|unconnected pads)' "$dir/drc-report.txt" \
+    | sed 's/^\*\* //;s/ \*\*$//' | tr '\n' ' ')"
+}
+
 # ⛔ Name every layer explicitly. The default set is for a 2-layer board and
 # would silently drop In1.Cu and In2.Cu — a 4-layer stackup plotted as 2 layers
 # is a board that shorts everywhere the inner planes were doing the work.
@@ -52,6 +74,10 @@ kicad-cli sch erc --severity-all -o "$OUT/erc-report.txt" \
 grep -E "Found .* (violations|unconnected pads|Footprint errors)" "$OUT/drc-report.txt" \
   | sed 's/^\*\* /  /;s/ \*\*$//'
 
+echo "== the optics flex and the taxel sheet =="
+plot_extra smartbag_optics optics
+plot_extra smartbag_taxels taxels
+
 echo "== the DRC these files were plotted from =="
 # ⛔ SHIPPED WITH THE ARTWORK, not summarised. A fabrication package that says
 # "DRC is clean" and does not include the report is asking to be believed. This
@@ -67,7 +93,7 @@ kicad-cli pcb export stats --output "$OUT/board-stats.txt" "$BOARD" >/dev/null 2
 python3 tools/fab_notes.py > "$OUT/README-FAB.md"
 echo "  README-FAB.md"
 
-( cd "$OUT" && zip -qr ../"$OUT"/smartbag-gerbers.zip gerbers )
+( cd "$OUT" && zip -qr ../"$OUT"/smartbag-gerbers.zip gerbers optics taxels )
 echo
 echo "wrote $OUT/  ($(du -sh "$OUT" | cut -f1))"
 ls "$OUT/gerbers" | sed 's/^/  /'

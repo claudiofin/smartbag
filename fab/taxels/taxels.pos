@@ -1,0 +1,4 @@
+Ref,Val,Package,PosX,PosY,Rot,Side
+"FID1","fiducial","Fiducial_1mm_Mask2mm",101.500000,-201.000000,0.000000,top
+"FID2","fiducial","Fiducial_1mm_Mask2mm",318.500000,-201.000000,0.000000,top
+"J20","FFC to insert, 24 way","Hirose_FH12-24S-0.5SH_1x24-1MP_P0.50mm_Horizontal",210.000000,-201.000000,0.000000,top
