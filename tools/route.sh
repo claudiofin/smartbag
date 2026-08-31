@@ -15,7 +15,18 @@
 # does anything else, so it cannot run headless — it will open a window. With
 # -de/-do it routes and exits on its own.
 #
-# Usage:  tools/route.sh [passes]        (default 60)
+# ⛔ MORE PASSES IS NOT BETTER, AND IT WAS WORTH MEASURING RATHER THAN ASSUMING.
+# -mp caps the AUTOROUTER's passes, not just the optimiser's, so 60 looked like
+# an arbitrary limit somebody had left on. Running the same board at 400 took 52
+# minutes instead of 15 and came back with SIX unconnected pads instead of four.
+# Rip-up and retry does not improve monotonically: given more passes it tears out
+# routes it already had and does not always find them again.
+#
+# ⚠️ So 60 is a measurement, not a default. If the board changes enough to be
+# worth re-testing, back up hardware/smartbag_core.ses first — this script
+# overwrites it, and a worse session is not obviously worse until DRC says so.
+#
+# Usage:  tools/route.sh [passes]        (default 60, and 60 is the best one found)
 set -e
 cd "$(dirname "$0")/.."
 
