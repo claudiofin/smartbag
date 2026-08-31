@@ -25,7 +25,7 @@ been built.
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
 | board | **94 parts, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. 10 pads of 480 still need finishing by hand — see [Routing](#routing). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **18 of 18 agree** — see [The bill of materials](#the-bill-of-materials). |
-| firmware | the wake-up chain, the ledger, the taxel driver and the GATT layer exist and are tested — **405 assertions**, `-Werror`. No RTOS, no vendor BLE stack. |
+| firmware | the wake-up chain, the ledger, the taxel driver, the GATT layer, **the charge policy and the sensor bring-up** — **690 assertions**, `-Werror`. What is left is nine HAL functions and a vendor BLE stack, and they are named. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). ⚠️ It now has to run on a Cortex-M33, not an NPU. |
 | app | **written and running** — [`app/`](app/), tested against the firmware's own bytes. No native build; it is a web app. |
@@ -45,7 +45,7 @@ Run everything that can be checked:
 
 ```
 == design constraints ==   all constraints hold
-== firmware ==             28 + 324 + 53 checks, 0 failures
+== firmware ==             28 + 324 + 53 + 264 + 21 checks, 0 failures
 == protocol ==             15 tests passed
 == ERC ==                  0 violations
 == DRC ==                  0 errors · 4 unconnected pads · 0 footprint errors
@@ -796,6 +796,73 @@ handshake, and three rules that are enforced rather than documented:
 
 There is no link layer, no L2CAP, no security manager and no vendor SDK. Bind
 these buffers to whatever NimBLE or a SoftDevice calls a notify.
+
+## Where the firmware stops being portable
+
+⛔ **`firmware/sb_hal.h` is nine function pointers and none of them is
+implemented here.** That is the point. A HAL written as `#include <nrfx_spim.h>`
+welds the design to one vendor and makes the interesting parts — sequencing,
+timeouts, what happens when a sensor does not answer — untestable without
+silicon. Written as a vtable, the same code runs against a simulated bus on a
+laptop.
+
+```
+now_ms  delay_us  spi_xfer  i2c_write  i2c_read  gpio_set  gpio_get
+mux_select  adc_read
+```
+
+⭐ **That is the honest size of the remaining silicon work.** Not "no drivers" —
+these nine, plus a vendor BLE stack bound to `sb_ble.c`'s buffers. Everything
+above them is written and tested.
+
+### The charge policy
+
+The last open ⛔ in this project, closed. `thermal/budget.py` printed the same
+red line on every run; the hardware went on the board; and
+[`firmware/sb_power.c`](firmware/sb_power.c) is the policy that was still
+missing. It is pure — no I/O, no clock, no state — so all of it is testable.
+
+| | |
+|---|---|
+| bag open, cell 10–40 °C | **5 W** |
+| bag **closed** | **2.2 W**, whatever the temperature |
+| cell < 0 °C or ≥ 45 °C | **off** |
+| thermistor reading open | **off** |
+
+**264 assertions**, and the sweeps are the ones worth naming: every cell
+temperature from −10 to 60 °C with the bag shut, asserting not one returns full
+current; every temperature above 45 °C, asserting charging **stops** rather than
+slows; every temperature below 0 °C, because charging a cold lithium cell plates
+lithium metal on the anode, which is slower and more permanent than overheating;
+and a thermistor reading open at every temperature, because an NTC that has come
+unstuck reads as an extreme and *which* extreme depends on how the divider
+failed — it can be detected, never inferred.
+
+⭐ `tools/check.py` asserts the firmware's constants still match what
+`thermal/budget.py` computes — 2200 mW against a modelled 2165. **A safety limit
+written down twice is one that will eventually be written down differently.**
+
+### Sensor bring-up, and what a dead sensor does
+
+The register maps belong to Acconeer and ST and are not reimplemented. What
+neither vendor decides is the part this product gets wrong if nobody writes it
+down: **when each sensor is allowed to cost power, how long it is given to
+answer, and what happens when it does not.**
+
+- ⛔ **XSHUT goes low before it goes high.** The datasheet says it "should be
+  high only when AVDD is on", and this rail is switched off between bursts —
+  releasing a shutdown pin into a half-powered part is not a crash, it is a
+  sensor that works on the bench and fails cold.
+- ⛔ **Every wait has a deadline.** A sensor that has come off its flex does not
+  fail loudly; it stops interrupting. A loop without a deadline turns one dead
+  part into a device that has stopped responding. Worst case is **320 ms of
+  waiting inside a 2000 ms settle window** — and there is an assertion that it
+  still fits.
+- ⭐ **One dead radar is not a failure.** `ENABLE` is shared, both are probed,
+  and one live sensor still gives a map from one viewpoint. Refusing to come up
+  because half the hardware answered would turn a degraded map into no map. Two
+  dead ones *are* a failure, and `ENABLE` is dropped again rather than left
+  powering two chips that will not answer.
 
 ## The app
 

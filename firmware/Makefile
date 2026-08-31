@@ -2,13 +2,14 @@
 # compiler can actually check, so it may as well be strict.
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -O2
 
-BINS = test_smartbag test_sb_fsr test_sb_ble test_sb_power
+BINS = test_smartbag test_sb_fsr test_sb_ble test_sb_power test_sb_sensors
 
 test: $(BINS)
 	./test_smartbag
 	./test_sb_fsr
 	./test_sb_ble
 	./test_sb_power
+	./test_sb_sensors
 
 test_smartbag: test_smartbag.c smartbag.c smartbag.h
 	$(CC) $(CFLAGS) -o $@ test_smartbag.c smartbag.c
@@ -32,6 +33,9 @@ gen_vectors: gen_vectors.c sb_ble.c smartbag.c sb_ble.h smartbag.h
 
 test_sb_power: test_sb_power.c sb_power.c sb_power.h
 	$(CC) $(CFLAGS) -o $@ test_sb_power.c sb_power.c
+
+test_sb_sensors: test_sb_sensors.c sb_sensors.c sb_sensors.h sb_hal.h
+	$(CC) $(CFLAGS) -o $@ test_sb_sensors.c sb_sensors.c
 
 clean:
 	rm -f $(BINS) gen_vectors
