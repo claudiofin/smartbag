@@ -43,9 +43,13 @@ echo "  $(grep -cE '^  ok ' /tmp/smartbag_bom.txt) of $(grep -cE '^  (ok|⛔) ' 
 grep "cannot accept" /tmp/smartbag_bom.txt | sed 's/^/  /' || true
 
 echo
+echo "== recognition fits the processor =="
+python3 ml/inference_budget.py | grep -E "IT FITS|IT DOES NOT" | sed 's/^ */  /'
+
+echo
 echo "== physics =="
 # ⚠️ These do not pass or fail: they report. Both currently report a problem
 # the design has not answered, and printing the headline here is the only thing
 # stopping it being quietly forgotten.
-python3 rf/feed_loss.py | grep -E "^  (⛔|  Feed loss)" | head -1
+python3 rf/feed_loss.py | grep -E "✅ SETTLED|^  ⛔" | tail -1
 python3 thermal/budget.py | grep -E "⛔|Cell stays" | head -1

@@ -1,28 +1,59 @@
 ** Drc report for smartbag_core.kicad_pcb **
-** Created on 2026-08-31T10:03:05 **
+** Created on 2026-08-31T14:27:39 **
 ** Report includes: Errors, Warnings, Exclusions **
 
-** Found 2 DRC violations **
-[lib_footprint_mismatch]: Footprint 'Acconeer_A121_fcCSP50' does not match copy in library 'SmartBag'
+** Found 3 DRC violations **
+[via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
-    @(298.0000 mm, 148.0000 mm): Footprint U6
+    @(299.7500 mm, 149.7500 mm): Via [CS_RADAR_R] on F.Cu - B.Cu
 [lib_footprint_mismatch]: Footprint 'Acconeer_A121_fcCSP50' does not match copy in library 'SmartBag'
     Local override; warning
     @(122.0000 mm, 148.0000 mm): Footprint U2
+[lib_footprint_mismatch]: Footprint 'Acconeer_A121_fcCSP50' does not match copy in library 'SmartBag'
+    Local override; warning
+    @(298.0000 mm, 148.0000 mm): Footprint U6
 
-** Found 3 unconnected pads **
+** Found 10 unconnected pads **
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(112.0000 mm, 138.0000 mm): Zone 'GND_top' [GND] on F.Cu, priority 0
-    @(112.0000 mm, 138.0000 mm): Zone 'GND_top' [GND] on F.Cu, priority 0
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(185.2350 mm, 149.2000 mm): Track [VDD_3V3] on F.Cu, length 2.7850 mm
+    @(188.0200 mm, 149.2000 mm): Track [VDD_3V3] on F.Cu, length 3.9575 mm
     @(191.0500 mm, 149.4000 mm): Pad 10 [VDD_3V3] of U1 on F.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(204.1500 mm, 140.9880 mm): Track [I2C_SDA] on F.Cu, length 0.0005 mm
-    @(212.5000 mm, 149.3875 mm): Pad 13 [I2C_SDA] of U3 on F.Cu
+    @(195.0000 mm, 150.9500 mm): Pad 21 [MUX_EN_N] of U1 on F.Cu
+    @(255.8000 mm, 154.4750 mm): Pad 15 [MUX_EN_N] of U7 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(191.0500 mm, 150.2000 mm): Pad 12 [SPI_SCK] of U1 on F.Cu
+    @(300.2500 mm, 149.7500 mm): Pad K2 [SPI_SCK] of U6 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(300.2500 mm, 147.7500 mm): Pad K6 [SPI_MOSI] of U6 on F.Cu
+    @(191.8000 mm, 150.9500 mm): Track [SPI_MOSI] on F.Cu, length 0.4667 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(300.2500 mm, 149.2500 mm): Pad K3 [SPI_MISO] of U6 on F.Cu
+    @(192.6000 mm, 150.9500 mm): Track [SPI_MISO] on F.Cu, length 0.4520 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(193.0000 mm, 150.9500 mm): Pad 16 [CS_RADAR_R] of U1 on F.Cu
+    @(299.7500 mm, 149.7500 mm): Pad J2 [CS_RADAR_R] of U6 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(121.7500 mm, 150.2500 mm): Pad F10 [RADAR_EN] of U2 on F.Cu
+    @(193.8000 mm, 150.9500 mm): Pad 18 [RADAR_EN] of U1 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(193.8000 mm, 150.9500 mm): Pad 18 [RADAR_EN] of U1 on F.Cu
+    @(298.2500 mm, 145.7500 mm): Pad F10 [RADAR_EN] of U6 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(119.7500 mm, 149.2500 mm): Pad K8 [RADAR_IRQ_L] of U2 on F.Cu
+    @(194.2000 mm, 150.9500 mm): Pad 19 [RADAR_IRQ_L] of U1 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(194.6000 mm, 150.9500 mm): Pad 20 [RADAR_IRQ_R] of U1 on F.Cu
+    @(300.2500 mm, 146.7500 mm): Pad K8 [RADAR_IRQ_R] of U6 on F.Cu
 
 ** Found 0 Footprint errors **
 

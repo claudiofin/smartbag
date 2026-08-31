@@ -201,13 +201,17 @@ BOM = {
     "AE1": PART(
         mpn="2450AT43F0100E", manufacturer="Johanson Technology",
         description="2.4 GHz ceramic chip antenna",
-        package="0402-style chip", body=(3.2, 1.6, 1.3), pitch=None, pins=2,
+        package="SMD chip", body=(6.0, 2.0, 1.2), pitch=None, pins=2,
         datasheet="https://www.johansontechnology.com/datasheets/2450AT43F0100/2450AT43F0100.pdf",
         pdf=None, usd=None, stock="commodity",
-        verdict="OK. ⚠️ Its matching network is Nordic's reference (L2, C6, C11 "
-                "from table 87) and has NOT been tuned for this board — a chip "
-                "antenna's match depends on the ground plane around it, so this "
-                "is a starting point for a VNA, not a finished network.",
+        verdict="OK now, and it was wrong three ways before the datasheet was "
+                "read. ⛔ The body was recorded as 3.2 x 1.6 mm and is 6.0 x "
+                "2.0. ⛔ Terminal 2 was tied to GROUND and the terminal table "
+                "says NC — grounding it loads the radiator and no match "
+                "recovers from that. ⚠️ And the network values are Johanson's "
+                "own evaluation-board figures, which their datasheet says will "
+                "be different on any other PCB; they are a topology with "
+                "placeholders in it, to be swept on a VNA.",
     ),
 }
 # ── passives ─────────────────────────────────────────────────────────────────

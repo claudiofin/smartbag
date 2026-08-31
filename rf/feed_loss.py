@@ -148,7 +148,11 @@ def main():
               "be —")
         print("     which is option one above, arrived at by the parts bin "
               "rather than")
-        print("     by choice. ANT_A1 and ANT_A2 should not be nets at all.")
+        print("     by choice. ANT_A1 and ANT_A2 are no longer nets at all.")
+        print()
+        print("  ✅ SETTLED. This file is kept as the reasoning that forced the")
+        print("     change, not as an open problem. The board it describes does")
+        print("     not exist any more.")
     else:
         print(f"  Feed loss {worst:.1f} dB one way — acceptable.")
 

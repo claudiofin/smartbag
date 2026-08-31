@@ -270,6 +270,43 @@ def ground_zone(layer, name):
 	)'''
 
 
+def antenna_keepout(x, y, w=7.0, h=2.2):
+    """The copper-free window a chip antenna needs, from its own datasheet.
+
+    ⛔ A CHIP ANTENNA WITH GROUND UNDER IT IS NOT AN ANTENNA. The Johanson
+    2450AT43F0100's mounting drawing shows a 7.0 x 2.2 mm region with the ground
+    plane pulled back on every layer, and the board poured ground over all of it
+    — three planes, straight through the radiator — because nothing in the
+    generator knew the part was special. It would have reflowed, passed every
+    check this project runs, and radiated almost nothing.
+
+    ⚠️ Not oversized either. The plane is the antenna's counterpoise: clearing
+    more than the datasheet asks for detunes it in the other direction.
+
+    ⛔ TRACKS ARE ALLOWED THROUGH IT, and the first version forbade them — which
+    left the antenna's own feed line unable to reach it. What the datasheet
+    clears is the GROUND PLANE under the radiator, not the 50 ohm line that
+    drives it. Vias stay forbidden: a via here is a stitch back to the plane
+    that was just removed.
+    """
+    pts = " ".join(f"(xy {CX + px:.4f} {CY + py:.4f})" for px, py in (
+        (x - w / 2, y - h / 2), (x + w / 2, y - h / 2),
+        (x + w / 2, y + h / 2), (x - w / 2, y + h / 2)))
+    return f'''	(zone
+		(net 0)
+		(net_name "")
+		(layers "F.Cu" "In1.Cu" "In2.Cu" "B.Cu")
+		(uuid "{uid()}")
+		(name "ANT_KEEPOUT")
+		(hatch edge 0.5)
+		(keepout (tracks allowed) (vias not_allowed) (pads allowed)
+			(copperpour not_allowed) (footprints allowed))
+		(placement (enabled no) (sheetname ""))
+		(fill (thermal_gap 0.3) (thermal_bridge_width 0.25))
+		(polygon (pts {pts}))
+	)'''
+
+
 def power_zone(layer, name, net_name, net, x0=-46.5, x1=47.5, y0=-8.5, y1=8.5):
     """A rectangular supply pour over the centre island.
 
@@ -501,15 +538,6 @@ def build():
     # pins it was meant to fix. power_zone() is kept because the reasoning still
     # holds for a board laid out with the pour in mind from the start; adding a
     # plane underneath finished routing is not the same thing.
-    r.append(ground_zone("F.Cu", "GND_top"))
-    r.append(ground_zone("In1.Cu", "GND_reference"))
-    r.append(ground_zone("B.Cu", "GND_bottom"))
-
-    # ⭐ The coordinates in netlist.py are a FLOORPLAN, not a layout: they say
-    # the radars belong at the ends and the FSR front end belongs beside its
-    # connector. place.relax() turns that into positions whose courtyards do not
-    # intersect, because 91 hand-typed coordinates always collide somewhere —
-    # the first pass collided in 28 places.
     # ⛔ A no-connect pin must carry NO net on the board. The schematic gives it
     # an auto-generated "unconnected-(U1-P1.09-Pad37)" name; putting this
     # project's own SPARE3 on the pad instead makes the two files disagree and
@@ -521,6 +549,20 @@ def build():
                                  rotation=nl.ROTATION)
     print(f"    placement settled, worst displacement {worst:.2f} mm")
 
+    # ⛔ The keepout is written BEFORE the pours so it is unambiguous which one
+    # wins; KiCad honours it either way, but a reader should not have to know
+    # that.
+    _ax, _ay = settled["AE1"]
+    r.append(antenna_keepout(_ax, _ay))
+    r.append(ground_zone("F.Cu", "GND_top"))
+    r.append(ground_zone("In1.Cu", "GND_reference"))
+    r.append(ground_zone("B.Cu", "GND_bottom"))
+
+    # ⭐ The coordinates in netlist.py are a FLOORPLAN, not a layout: they say
+    # the radars belong at the ends and the FSR front end belongs beside its
+    # connector. place.relax() turns that into positions whose courtyards do not
+    # intersect, because 91 hand-typed coordinates always collide somewhere —
+    # the first pass collided in 28 places.
     # components, placed and netted from netlist.py
     for ref, val, _sym, lib, fp, pins, _hx, _hy in nl.PARTS:
         x, y = settled[ref]

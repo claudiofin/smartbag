@@ -52,6 +52,15 @@ kicad-cli sch erc --severity-all -o "$OUT/erc-report.txt" \
 grep -E "Found .* (violations|unconnected pads|Footprint errors)" "$OUT/drc-report.txt" \
   | sed 's/^\*\* /  /;s/ \*\*$//'
 
+echo "== the DRC these files were plotted from =="
+# ⛔ SHIPPED WITH THE ARTWORK, not summarised. A fabrication package that says
+# "DRC is clean" and does not include the report is asking to be believed. This
+# one includes what remains, so a reviewer can disagree with it.
+kicad-cli pcb drc --schematic-parity --severity-all -o "$OUT/drc-report.txt" \
+  "$BOARD" >/dev/null 2>&1 || true
+grep -E "Found .*(violations|unconnected pads|Footprint errors)" \
+  "$OUT/drc-report.txt" | sed 's/^\*\* /  /;s/ \*\*$//'
+
 echo "== stats =="
 kicad-cli pcb export stats --output "$OUT/board-stats.txt" "$BOARD" >/dev/null 2>&1 || true
 

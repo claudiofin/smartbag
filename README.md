@@ -23,15 +23,17 @@ been built.
 | | |
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
-| board | **91 parts, four layers, routed.** DRC: **0 violations, 0 footprint errors**, schematic parity clean. 3 pads of 462 still need finishing by hand — see [Routing](#routing). |
+| board | **94 parts, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. 10 pads of 480 still need finishing by hand — see [Routing](#routing). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **18 of 18 agree** — see [The bill of materials](#the-bill-of-materials). |
-| firmware | the wake-up chain, the ledger, **the taxel driver and the GATT layer** exist and are tested — **405 assertions**, `-Werror`. No RTOS, no vendor BLE stack. |
+| firmware | the wake-up chain, the ledger, the taxel driver and the GATT layer exist and are tested — **405 assertions**, `-Werror`. No RTOS, no vendor BLE stack. |
+| recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). ⚠️ It now has to run on a Cortex-M33, not an NPU. |
 | app | **written and running** — [`app/`](app/), tested against the firmware's own bytes. No native build; it is a web app. |
 | RF | full-wave simulation rejected the antenna, closed-form analysis then rejected the whole feed — and the real part **dissolved the problem**: 60 GHz silicon has the antenna inside the package. There is now **no 60 GHz copper on this board.** See [RF](#rf). |
 | thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). It asked for charge current to be a function of cell temperature; the board now has an NTC and a PMIC that does exactly that. |
 | the taxel front end | measured wrong, then **fixed in hardware**: six transimpedance amplifiers and a 16:1 multiplexer — see [The taxel matrix](#the-taxel-matrix). |
-| fabrication | Gerbers, drill, placement and a generated fab note: `tools/fab.sh`. ⛔ **The camera module on J1 is still not a chosen part.** |
+| the 2.4 GHz antenna | ⛔ its datasheet found **three errors** in this design, one of them a terminal tied to ground that the part marks NC — see [The antenna](#the-antenna). |
+| fabrication | Gerbers, drill, placement, the DRC report and a generated fab note: `tools/fab.sh`. |
 
 Run everything that can be checked:
 
@@ -44,18 +46,19 @@ Run everything that can be checked:
 == firmware ==             28 + 324 + 53 checks, 0 failures
 == protocol ==             15 tests passed
 == ERC ==                  0 violations
-== DRC ==                  0 violations · 3 unconnected pads · 0 footprint errors
+== DRC ==                  0 errors · 10 unconnected pads · 0 footprint errors
 == BOM vs footprints ==    18 of 18 named parts have a real MPN whose package fits
-== physics ==              ⛔ 8 dB of feed loss makes this architecture unbuildable as drawn.
+== recognition ==          ⭐ IT FITS, AND WITH ROOM
+== physics ==              ✅ the 60 GHz feed question is settled
                            ⛔ Charging as specified puts the cell over its limit.
 ```
 
-⚠️ The last two lines are printed on every run **on purpose** — and they are now
-the two findings that **rewrote the board**. The feed loss deleted the 60 GHz
-copper and split one transceiver into two sensors; the charging analysis added a
-thermistor and chose the PMIC. They keep printing because the analyses are still
-true about the architectures they describe, and because a suite that only printed
-its passes would be helping to forget why the design looks the way it does.
+⚠️ The last two lines are printed on every run **on purpose** — and they are the
+two findings that **rewrote the board**. The feed loss deleted the 60 GHz copper
+and split one transceiver into two sensors; the charging analysis added a
+thermistor and chose the PMIC. One is now a ✅ and one is still a ⛔, and both
+keep printing: a suite that only reported its passes would be helping to forget
+why the design looks the way it does.
 
 ## What it is
 
@@ -377,15 +380,23 @@ hardware/reroute_from_session.sh    # rebuild from the committed .ses, no Java
 
 | | |
 |---|---|
-| tracks / vias | **1683 / 393**, 4.0 m of copper |
-| DRC | **0 violations, 0 footprint errors**, schematic parity clean |
-| unconnected | **3 pads of 462** |
-| layers | F.Cu 727 · In2.Cu 844 · B.Cu 112 · **In1.Cu 0 — a solid ground reference** |
+| tracks / vias | **1415 / 356**, 3.0 m of copper |
+| DRC | **0 errors, 0 footprint errors**, schematic parity clean |
+| unconnected | **10 pads of 488** |
+| layers | F.Cu 701 · In2.Cu 674 · B.Cu 40 · **In1.Cu 0 — a solid ground reference** |
 
-⚠️ **The three that are left**: `VDD_3V3` at U1 pin 10, `I2C_SDA` at U3 pin 13,
-and one ground pour island with nowhere to put a via. Freerouting stops
-improving and says so; finishing by hand from there is a normal step and has not
-been done. It is three pads, and they are named rather than rounded away.
+⚠️ **The ten that are left** are one cluster, not ten problems: `SPI_SCK`,
+`SPI_MOSI`, `SPI_MISO`, `CS_RADAR_R`, `RADAR_EN`, both radar interrupts and
+`MUX_EN_N`, all on U1's bottom edge, plus `VDD_3V3` at pin 10. Everything that
+edge talks to is spread along a 196 mm board and the pins face the wrong way.
+
+⛔ **Turning U1 round is the obvious fix and it does not work.** At 180° and
+again at 90°, Freerouting's autorouter finished in minutes and its *optimiser*
+then ground for over an hour without ever writing a session file — three
+attempts, two angles, same outcome. The unrouted-facing board routes in three.
+A layout the tool cannot finish is worse than one that is a little less tidy, so
+the cost is paid where it can be counted: ten pads, named, for a human to
+finish. Freerouting recommends exactly that once it stops improving.
 
 ### Three hand-written attempts first, and what they got wrong
 
@@ -580,6 +591,78 @@ only, with the names in a table on the next page.
 - **a tuned antenna match** — L2/C6/C11 are the chip vendor's reference values,
   and a chip antenna matches against the ground plane around it. This ground
   plane is not theirs.
+
+## Recognition fits the processor
+
+The parts search took the NPU away: no Bluetooth SoC in a QFN has one, so the
+processor is an nRF54L15 — a 128 MHz Cortex-M33 — and the recognition pipeline
+has to run there. "It probably fits in the settle window" is not an engineering
+claim, so [`ml/inference_budget.py`](ml/inference_budget.py) does the arithmetic.
+
+⭐ **The MACs are counted, not estimated.** It runs a tensor through the model in
+`classify.py` with hooks on every layer, so the number cannot drift away from the
+network that was actually measured. The camera transfer comes from the SPI clock
+the chosen module supports, and the deadlines are parsed out of
+`firmware/smartbag.h`. Four files, one budget, nothing retyped.
+
+| | |
+|---|---|
+| model | **6.99 M MACs/frame**, 51.6 k parameters at 96×96 grey |
+| memory | ~122 kB of the part's 256 kB |
+| inference | **27 ms/frame** at 2 MAC/cycle, 55 ms at 1 — ×3 frames = 82…164 ms |
+| capture | 28 ms for three 96×96 frames over the camera's 8 MHz SPI |
+| **end to end** | **110…191 ms against a 2000 ms settle window** |
+
+⭐ **It fits by 10.5× at the pessimistic bound.** The NPU was not missing. It was
+never needed at this model size — and the model size was chosen before the
+processor was, which is the only reason this came out well rather than luckily.
+
+⛔ **And the same arithmetic sets a build-time limit.** 320×240 RGB565 is 461 ms
+for a three-frame burst against the firmware's 400 ms capture timeout: it does
+not fit. The camera has to be configured at low resolution, and that is now a
+number in a file rather than a thing someone remembers.
+
+⚠️ What this does **not** say: that the accuracy in `ml/classify.py` survives int8
+quantisation, or that CMSIS-NN reaches these rates on this silicon. Both are
+measurable and neither has been measured. What is settled is that the arithmetic
+is not the obstacle.
+
+```bash
+python3 ml/inference_budget.py
+```
+
+## The antenna
+
+The 2.4 GHz chip antenna is a Johanson 2450AT43F0100 — it was a real part from
+the start, and reading its datasheet found **three errors in this design**:
+
+| | |
+|---|---|
+| ⛔ **terminal 2 was tied to ground** | the terminal table says pin 1 is the feeding point and pin 2 is **NC**. It is a mechanical anchor. Grounding it loads the radiator directly and no matching network recovers from that. This had been in the netlist since the first version, and nothing caught it — a pad tied to ground is electrically unremarkable in every check the project runs. |
+| ⛔ **the body was recorded as 3.2 × 1.6 mm** | it is **6.0 × 2.0 × 1.2**. The BOM check passed it anyway, because a courtyard larger than a body is correct and the wrong body was smaller. |
+| ⛔ **the ground plane ran straight under it** | the mounting drawing calls for a **7.0 × 2.2 mm** copper-free window on every layer. The board poured three planes through the radiator. It would have reflowed, passed every check, and radiated almost nothing. |
+
+The keepout is now generated from the datasheet's dimensions and sits in
+`generate_pcb.py`. ⚠️ **Tracks are allowed through it and vias are not** — the
+first version forbade both, which left the antenna's own feed unable to reach it.
+What the datasheet clears is the *ground plane* under the radiator, not the 50 Ω
+line that drives it.
+
+### The match is a topology, not a design
+
+The datasheet asks for "available slots for a pi (or shunt-series-shunt)
+network", and then says, in its own words, that the values it prints
+
+> are used when antenna is mounted on Johanson's evaluation board. The matching
+> values on client's PCB will be different.
+
+So C6–L2–C11 are three pads in the right places carrying Johanson's own
+evaluation-board figures as a starting point. ⚠️ **A chip antenna matches against
+the ground plane around it, and this ground plane is 196 mm long with a radar at
+each end** — nothing like their coupon. Those three components have to be swept
+on a VNA against a built board. Until that happens the BLE link budget is
+*unknown*, not *acceptable*, and the values are labelled `(tune)` in the BOM so
+nobody mistakes them for a result.
 
 ## Fabrication
 

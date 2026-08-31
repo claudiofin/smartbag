@@ -75,7 +75,7 @@
 				(stroke (width 0.254) (type default)) (fill (type background))))
 		(symbol "ANTENNA_1_1"
 			(pin passive line (at -12.70 0.00 0) (length 2.54) (name "FEED" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-			(pin power_in line (at 12.70 0.00 180) (length 2.54) (name "GND" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at 12.70 0.00 180) (length 2.54) (name "NC" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 		))
 	(symbol "BMI270"
 		(pin_names (offset 0.508)) (exclude_from_sim no)
@@ -175,14 +175,14 @@
 		(symbol "FFC_10_1_1"
 			(pin power_in line (at -12.70 5.08 0) (length 2.54) (name "GND" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
 			(pin power_in line (at -12.70 2.54 0) (length 2.54) (name "VDD" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at -12.70 0.00 0) (length 2.54) (name "SCL" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at -12.70 -2.54 0) (length 2.54) (name "SDA" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at -12.70 -5.08 0) (length 2.54) (name "SCK" (effects (font (size 1.27 1.27)))) (number "5" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at 12.70 5.08 180) (length 2.54) (name "MOSI" (effects (font (size 1.27 1.27)))) (number "6" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at 12.70 2.54 180) (length 2.54) (name "MISO" (effects (font (size 1.27 1.27)))) (number "7" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at 12.70 0.00 180) (length 2.54) (name "CS" (effects (font (size 1.27 1.27)))) (number "8" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at 12.70 -2.54 180) (length 2.54) (name "PWDN" (effects (font (size 1.27 1.27)))) (number "9" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at 12.70 -5.08 180) (length 2.54) (name "RST" (effects (font (size 1.27 1.27)))) (number "10" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at -12.70 0.00 0) (length 2.54) (name "SCK" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at -12.70 -2.54 0) (length 2.54) (name "MOSI" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at -12.70 -5.08 0) (length 2.54) (name "MISO" (effects (font (size 1.27 1.27)))) (number "5" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at 12.70 5.08 180) (length 2.54) (name "CS" (effects (font (size 1.27 1.27)))) (number "6" (effects (font (size 1.27 1.27)))))
+			(pin power_in line (at 12.70 2.54 180) (length 2.54) (name "GND" (effects (font (size 1.27 1.27)))) (number "7" (effects (font (size 1.27 1.27)))))
+			(pin power_in line (at 12.70 0.00 180) (length 2.54) (name "LED+" (effects (font (size 1.27 1.27)))) (number "8" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at 12.70 -2.54 180) (length 2.54) (name "LED-" (effects (font (size 1.27 1.27)))) (number "9" (effects (font (size 1.27 1.27)))))
+			(pin power_in line (at 12.70 -5.08 180) (length 2.54) (name "GND" (effects (font (size 1.27 1.27)))) (number "10" (effects (font (size 1.27 1.27)))))
 		))
 	(symbol "FFC_24"
 		(pin_names (offset 0.508)) (exclude_from_sim no)
@@ -270,6 +270,21 @@
 			(pin passive line (at 12.70 -11.43 180) (length 2.54) (name "I8" (effects (font (size 1.27 1.27)))) (number "23" (effects (font (size 1.27 1.27)))))
 			(pin power_in line (at 12.70 -13.97 180) (length 2.54) (name "VCC" (effects (font (size 1.27 1.27)))) (number "24" (effects (font (size 1.27 1.27)))))
 		))
+	(symbol "NMOS"
+		(pin_names (offset 0.508)) (exclude_from_sim no)
+		(in_bom yes) (on_board yes)
+		(property "Reference" "U" (at 0 6.35 0) (effects (font (size 1.27 1.27))))
+		(property "Value" "NMOS" (at 0 -6.35 0) (effects (font (size 1.27 1.27))))
+		(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(property "Datasheet" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(symbol "NMOS_0_1"
+			(rectangle (start -10.16 3.81) (end 10.16 -3.81)
+				(stroke (width 0.254) (type default)) (fill (type background))))
+		(symbol "NMOS_1_1"
+			(pin input line (at -12.70 1.27 0) (length 2.54) (name "G" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+			(pin power_in line (at -12.70 -1.27 0) (length 2.54) (name "S" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at 12.70 1.27 180) (length 2.54) (name "D" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
+		))
 	(symbol "NPM1300"
 		(pin_names (offset 0.508)) (exclude_from_sim no)
 		(in_bom yes) (on_board yes)
@@ -326,8 +341,8 @@
 			(rectangle (start -10.16 33.02) (end 10.16 -33.02)
 				(stroke (width 0.254) (type default)) (fill (type background))))
 		(symbol "NRF54L15_1_1"
-			(pin output line (at -12.70 30.48 0) (length 2.54) (name "P1.00" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-			(pin output line (at -12.70 27.94 0) (length 2.54) (name "P1.01" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at -12.70 30.48 0) (length 2.54) (name "P1.00/XL1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at -12.70 27.94 0) (length 2.54) (name "P1.01/XL2" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 			(pin output line (at -12.70 25.40 0) (length 2.54) (name "P1.02" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
 			(pin output line (at -12.70 22.86 0) (length 2.54) (name "P1.03" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27)))))
 			(pin input line (at -12.70 20.32 0) (length 2.54) (name "P1.04/AIN0" (effects (font (size 1.27 1.27)))) (number "5" (effects (font (size 1.27 1.27)))))
@@ -362,7 +377,7 @@
 			(pin passive line (at 12.70 10.16 180) (length 2.54) (name "XC1" (effects (font (size 1.27 1.27)))) (number "34" (effects (font (size 1.27 1.27)))))
 			(pin passive line (at 12.70 7.62 180) (length 2.54) (name "XC2" (effects (font (size 1.27 1.27)))) (number "35" (effects (font (size 1.27 1.27)))))
 			(pin power_in line (at 12.70 5.08 180) (length 2.54) (name "VDD" (effects (font (size 1.27 1.27)))) (number "36" (effects (font (size 1.27 1.27)))))
-			(pin passive line (at 12.70 2.54 180) (length 2.54) (name "P1.09" (effects (font (size 1.27 1.27)))) (number "37" (effects (font (size 1.27 1.27)))))
+			(pin output line (at 12.70 2.54 180) (length 2.54) (name "P1.09" (effects (font (size 1.27 1.27)))) (number "37" (effects (font (size 1.27 1.27)))))
 			(pin passive line (at 12.70 0.00 180) (length 2.54) (name "P1.10" (effects (font (size 1.27 1.27)))) (number "38" (effects (font (size 1.27 1.27)))))
 			(pin input line (at 12.70 -2.54 180) (length 2.54) (name "P1.11/AIN4" (effects (font (size 1.27 1.27)))) (number "39" (effects (font (size 1.27 1.27)))))
 			(pin input line (at 12.70 -5.08 180) (length 2.54) (name "P1.12/AIN5" (effects (font (size 1.27 1.27)))) (number "40" (effects (font (size 1.27 1.27)))))
@@ -432,6 +447,20 @@
 		(symbol "R_1_1"
 			(pin passive line (at -12.70 0.00 0) (length 2.54) (name "1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
 			(pin passive line (at 12.70 0.00 180) (length 2.54) (name "2" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+		))
+	(symbol "XTAL2"
+		(pin_names (offset 0.508)) (exclude_from_sim no)
+		(in_bom yes) (on_board yes)
+		(property "Reference" "U" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+		(property "Value" "XTAL2" (at 0 -5.08 0) (effects (font (size 1.27 1.27))))
+		(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(property "Datasheet" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(symbol "XTAL2_0_1"
+			(rectangle (start -10.16 2.54) (end 10.16 -2.54)
+				(stroke (width 0.254) (type default)) (fill (type background))))
+		(symbol "XTAL2_1_1"
+			(pin passive line (at -12.70 0.00 0) (length 2.54) (name "XI" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+			(pin passive line (at 12.70 0.00 180) (length 2.54) (name "XO" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 		))
 	(symbol "XTAL4"
 		(pin_names (offset 0.508)) (exclude_from_sim no)

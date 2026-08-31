@@ -33,12 +33,28 @@ import dimensions as dim          # noqa: E402
 AMBIENT = 25.0                    # °C, and generous: a bag in a car is not 25
 
 # ─── what dissipates, and for how long ────────────────────────────────────────
+# ⛔ THESE USED TO BE GUESSES ABOUT INVENTED PARTS — "radar ping 1.2 W", "NPU
+# inference 0.4 W" — and both parts are gone. Every figure below now comes from
+# the datasheet of a component that is actually on the board, and the two that
+# changed most changed downwards.
+#
 # (name, peak watts, seconds per event, events per day)
 LOADS = [
-    ("radar ping (U2)", 1.20, 0.15, 40),
-    ("NPU inference (U1)", 0.40, 0.12, 40),
+    # ⚠️ Two radars now, not one. The A121 datasheet caps "current into any
+    # power supply" at 100 mA on a 1.8 V rail; the measurement itself is tens of
+    # milliseconds, not the 150 ms the invented transceiver was charged for.
+    ("radar ping (U2+U6)", 2 * 0.100 * 1.8, 0.05, 40),
+    # Arducam Mega B0435: 56-136 mA at 3.3 V, 42 ms to wake. The capture window
+    # is 3 frames of 96x96, which ml/inference_budget.py puts at 28 ms.
+    ("camera burst (J1)", 0.136 * 3.3, 0.10, 40),
+    # ⭐ Inference is now the CHEAPEST of the three, not the most expensive. A
+    # Cortex-M33 at 128 MHz is a few milliamps; the NPU it replaced was charged
+    # at 400 mW. See ml/inference_budget.py for the 164 ms.
+    ("inference on the M33", 0.006 * 3.3, 0.164, 40),
     ("IR illuminators", 0.60, 0.01, 40),
-    ("FSR sweep", 0.006, 0.005, 86400),      # the 1 Hz sentinel
+    # Eight TLV9064 channels at ~0.5 mA each, plus the multiplexer, for the
+    # length of one 16-column sweep.
+    ("FSR sweep", 0.008 * 0.5e-3 * 3.3 * 1000, 0.005, 86400),
     ("BLE advertising", 0.012, 0.001, 86400),
     ("deep sleep", 25e-6, 1.0, 86400),
 ]
@@ -46,8 +62,8 @@ LOADS = [
 # ─── package thermal mass, from bulk properties ───────────────────────────────
 # (name, mm^3 of package, density kg/m^3, specific heat J/kgK)
 PACKAGES = {
-    "radar ping (U2)": (5.0 * 5.0 * 0.9, 2000, 800),
-    "NPU inference (U1)": (6.0 * 6.0 * 0.9, 2000, 800),
+    "radar ping (U2+U6)": (5.2 * 5.5 * 0.88, 2000, 800),   # A121 fcCSP50
+    "inference on the M33": (6.0 * 6.0 * 0.85, 2000, 800),  # nRF54L15 QFN48
 }
 
 # ─── the charging case ────────────────────────────────────────────────────────
@@ -86,6 +102,16 @@ def main():
         print(f"   {name:<22} {watts * 1000:>7.1f} mW peak  x {secs:>5.3f} s "
               f"x {per_day:>5} /day  ->  {avg * 1e6:>8.1f} uW average")
     print(f"   {'TOTAL':<22} {total_avg * 1000:>34.2f} mW average")
+    # ⭐ Worth naming out loud, because it moved. The bursts everyone worries
+    # about are duty-cycled into irrelevance; what is left is whatever runs
+    # continuously, and after the FSR front end grew six amplifiers that is the
+    # front end rather than the radio or the radar.
+    top = max(LOADS, key=lambda L: L[1] * L[2] * L[3])
+    share = top[1] * top[2] * top[3] / 86400 / total_avg * 100
+    print(f"   dominated by {top[0]!r}: {share:.0f}% of the average, and it is "
+          "the one")
+    print("   thing here that is not a burst — it runs every second the bag is "
+          "shut.")
 
     print("\n── burst temperature rise (adiabatic, package only)")
     # ⚠️ Adiabatic is the pessimistic bound: for a 150 ms burst almost no heat

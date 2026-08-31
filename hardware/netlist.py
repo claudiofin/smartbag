@@ -62,8 +62,14 @@ def _bus(prefix, n, etype, start_pin):
 # outputs go straight to the ADC with no multiplexer between them, so nothing
 # has to be settled and re-settled per row.
 U1_PINS = [
-    (1,  "P1.00", OUT,     "CAM_PWDN"),
-    (2,  "P1.01", OUT,     "CAM_RESET"),
+    # ⭐ XL1/XL2, NOT GPIO. These two pins came free when the camera turned out
+    # to need neither a reset nor a power-down, and they are the 32.768 kHz
+    # oscillator inputs. The internal RC is ±500 ppm — 43 seconds a day — and
+    # this product puts an age on the front of every position it reports:
+    # "measured 40 minutes ago" is a claim about a clock. A ±20 ppm crystal
+    # makes it 1.7 seconds a day. Nordic's reference calls for 2012, Cl = 9 pF.
+    (1,  "P1.00/XL1", PASSIVE, "XTAL32K_1"),
+    (2,  "P1.01/XL2", PASSIVE, "XTAL32K_2"),
     (3,  "P1.02", OUT,     "MUX_S0"),
     (4,  "P1.03", OUT,     "MUX_S1"),
     (5,  "P1.04/AIN0", IN, "ADC0"),
@@ -98,7 +104,7 @@ U1_PINS = [
     (34, "XC1", PASSIVE,   "XTAL32M_1"),
     (35, "XC2", PASSIVE,   "XTAL32M_2"),
     (36, "VDD", PWR_IN,    "VDD_3V3"),
-    (37, "P1.09", PASSIVE, "SPARE3"),
+    (37, "P1.09", OUT,     "IR_LED_EN"),
     (38, "P1.10", PASSIVE, "SPARE1"),
     (39, "P1.11/AIN4", IN, "ADC4"),
     (40, "P1.12/AIN5", IN, "ADC5"),
@@ -317,7 +323,24 @@ def _quad_opamp(rows):
 U8_PINS = _quad_opamp((0, 1, 2, 3))
 U9_PINS = _quad_opamp((4, 5, None, None))
 
+# ─── Q1: the IR illuminator switch ──────────────────────────────────────────
+# ⛔ A GPIO CANNOT DRIVE THESE. thermal/budget.py budgets 0.6 W of illuminator
+# for 10 ms, which at the cell voltage is around 160 mA — more than an order of
+# magnitude past what a pin will source. The LEDs live on the optics module in
+# two series pairs off VSYS; what the main board owes them is a low-side switch
+# and somewhere to put the current-set resistor.
+#
+# ⚠️ R13 is a pull-DOWN on the gate, not a pull-up, and it is the reason the
+# illuminators are dark while the processor is in reset. A floating gate on a
+# logic-level FET is a 160 mA load waiting for a static charge.
+Q1_PINS = [
+    (1, "G", IN, "IR_LED_EN"),
+    (2, "S", PWR_IN, "GND"),
+    (3, "D", PASSIVE, "IR_LED_K"),
+]
+
 # ─── Crystals ────────────────────────────────────────────────────────────────
+Y4_PINS = [(1, "XI", PASSIVE, "XTAL32K_1"), (2, "XO", PASSIVE, "XTAL32K_2")]
 Y1_PINS = [(1, "XI", PASSIVE, "XTAL32M_1"), (2, "GND", PWR_IN, "GND"),
            (3, "XO", PASSIVE, "XTAL32M_2"), (4, "GND", PWR_IN, "GND")]
 Y2_PINS = [(1, "XI", PASSIVE, "X24L_1"), (2, "GND", PWR_IN, "GND"),
@@ -330,13 +353,30 @@ Y3_PINS = [(1, "XI", PASSIVE, "X24R_1"), (2, "GND", PWR_IN, "GND"),
 # the direction of the thing on the other end, and ERC was right to reject it: a
 # connector drives nothing, and calling pin 5 an output puts two drivers on the
 # clock net. The only pins with a direction here are the supplies.
+#
+# ⛔ THIS USED TO CARRY I2C, A POWER-DOWN AND A RESET, and the real camera wants
+# none of them. The Arducam Mega is SPI only — "we removed two I2C interfaces
+# and now only 6 pin left, 4 for SPI, 2 for power" — so three ways came free and
+# went to the thing the board was actually missing: a way to drive the
+# illuminators. thermal/budget.py has been costing them at 0.6 W for a hundredth
+# of a second since before there was anything to switch them with.
+#
+# ⭐ VDD_CAM IS A SWITCHED RAIL, not the 3.3 V bus. It comes off the nPM1300's
+# load switch, so the camera — 56 to 136 mA whenever it is awake — is off
+# between bursts rather than merely idle.
 J1_PINS = [
-    (1, "GND", PWR_IN, "GND"), (2, "VDD", PWR_IN, "VDD_CAM"),
-    (3, "SCL", PASSIVE, "I2C_SCL"), (4, "SDA", PASSIVE, "I2C_SDA"),
-    (5, "SCK", PASSIVE, "SPI_SCK"), (6, "MOSI", PASSIVE, "SPI_MOSI"),
-    (7, "MISO", PASSIVE, "SPI_MISO"), (8, "CS", PASSIVE, "CS_CAM"),
-    (9, "PWDN", PASSIVE, "CAM_PWDN"), (10, "RST", PASSIVE, "CAM_RESET"),
+    (1, "GND", PWR_IN, "GND"),
+    (2, "VDD", PWR_IN, "VDD_CAM"),
+    (3, "SCK", PASSIVE, "SPI_SCK"),
+    (4, "MOSI", PASSIVE, "SPI_MOSI"),
+    (5, "MISO", PASSIVE, "SPI_MISO"),
+    (6, "CS", PASSIVE, "CS_CAM"),
+    (7, "GND", PWR_IN, "GND"),
+    (8, "LED+", PWR_IN, "VSYS"),
+    (9, "LED-", PASSIVE, "IR_LED_K"),
+    (10, "GND", PWR_IN, "GND"),
 ]
+
 J4_PINS = ([(1, "GND", PWR_IN, "GND")]
            + [(2 + i, f"C{i}", PASSIVE, f"FSR_C{i}") for i in range(16)]
            + [(18 + i, f"R{i}", PASSIVE, f"FSR_R{i}") for i in range(6)]
@@ -345,7 +385,13 @@ J2_PINS = [(1, "BAT+", PWR_OUT, "VBAT"), (2, "BAT-", PWR_IN, "GND")]
 J3_PINS = [(1, "QI+", PWR_OUT, "VQI"), (2, "QI-", PWR_IN, "GND")]
 J5_PINS = [(1, "VDD", PWR_IN, "VDD_3V3"), (2, "SWCLK", PASSIVE, "SWDCLK"),
            (3, "SWDIO", PASSIVE, "SWDIO"), (4, "GND", PWR_IN, "GND")]
-AE1_PINS = [(1, "FEED", PASSIVE, "BLE_ANT"), (2, "GND", PWR_IN, "GND")]
+# ⛔ TERMINAL 2 IS "NC", AND IT WAS TIED TO GROUND. The Johanson datasheet's
+# terminal table says pin 1 is the feeding point and pin 2 is Not Connected —
+# it is a mechanical anchor, not a return. Grounding it loads the radiator
+# directly and there is no matching network that recovers from that. This was in
+# the netlist from the first version and nothing caught it, because a pad tied
+# to ground is electrically unremarkable in every check the project runs.
+AE1_PINS = [(1, "FEED", PASSIVE, "BLE_ANT"), (2, "NC", PASSIVE, "ANT_NC")]
 
 _2 = lambda a, b: [(1, "1", PASSIVE, a), (2, "2", PASSIVE, b)]   # noqa: E731
 
@@ -366,6 +412,8 @@ PARTS = [
      "Bosch_LGA-14_3x2.5mm_P0.5mm", U4_PINS, -3.0, -6.5),
     ("U5", "DRV5032FBDBZR", "DRV5032", "Package_TO_SOT_SMD",
      "SOT-23", U5_PINS, -30.0, -6.0),
+    ("Q1", "SI2302CDS-T1-GE3", "NMOS", "Package_TO_SOT_SMD",
+     "SOT-23", Q1_PINS, -30.0, 3.0),
     ("U7", "CD74HC4067SM96", "MUX16", "Package_SO",
      "SSOP-24_5.3x8.2mm_P0.65mm", U7_PINS, 42.0, 1.5),
     ("U8", "TLV9064IPWR", "OPA_QUAD", "Package_SO",
@@ -374,6 +422,8 @@ PARTS = [
      "TSSOP-14_4.4x5mm_P0.65mm", U9_PINS, 44.0, -5.5),
     ("Y1", "32 MHz Cl=8pF", "XTAL4", "Crystal",
      "Crystal_SMD_2016-4Pin_2.0x1.6mm", Y1_PINS, -19.5, -6.0),
+    ("Y4", "32.768 kHz Cl=9pF", "XTAL2", "Crystal",
+     "Crystal_SMD_2012-2Pin_2.0x1.2mm", Y4_PINS, -22.0, -3.0),
     ("Y2", "24 MHz", "XTAL4", "Crystal",
      "Crystal_SMD_2016-4Pin_2.0x1.6mm", Y2_PINS, -81.0, -5.5),
     ("Y3", "24 MHz", "XTAL4", "Crystal",
@@ -452,6 +502,7 @@ _PASSIVES = [
     ("C51", "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", -2.5, -6.5),
     ("C52", "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", -27.0, 5.0),
     # I2C pull-ups
+    ("R13", "100k 1%", "R_0402_1005Metric", "IR_LED_EN", "GND", -27.0, 2.0),
     ("R7", "4.7k 1%", "R_0402_1005Metric", "I2C_SDA", "VDD_3V3", -20.0, 3.0),
     ("R8", "4.7k 1%", "R_0402_1005Metric", "I2C_SCL", "VDD_3V3", -17.5, 3.0),
     # ⭐ VREF for the whole FSR front end: 3.3 V through a 6.8k/1.2k divider is
@@ -520,7 +571,8 @@ PLACEMENT = {
     "C11": (-37.0, 4.0),
     "J1": (-34.0, 5.5), "J5": (-34.0, -5.0),
     # ── band 2 (x -28..-4): the processor ───────────────────────────────────
-    "U1": (-16.0, 0.0), "Y1": (-25.0, -6.0), "U5": (-25.0, 2.0),
+    "U1": (-16.0, 0.0), "Y1": (-25.0, -6.0), "U5": (-25.0, 2.5),
+    "Q1": (-29.5, -3.0), "R13": (-27.0, -3.0),
     "C52": (-27.5, 5.0), "L1": (-22.0, 5.0),
     # ⛔ THE 100 nF PARTS HUG THE PINS THEY DECOUPLE. They used to sit in a
     # tidy row along the top of the band, which looks organised and is wrong
@@ -572,13 +624,17 @@ PLACEMENT.update({f"R{60 + i}": (18.5 + (i % 8) * 2.3, 7.0 - (i // 8) * 2.3)
 # 180 the crystal and the antenna pins end up facing Y1 and AE1, which are on
 # the left, and the bus faces the FSR front end. Nothing moved; the part just
 # faces the right way.
-# ⚠️ U1 IS NOT ROTATED, AND THAT WAS TESTED. Turning it 180 degrees puts its SPI
-# and multiplexer-control pins on the side the FSR front end is on, which is the
-# obvious improvement — and it made Freerouting's optimiser grind for over an
-# hour without producing a session file, twice. The unrotated board routes in
-# three minutes. A layout the tool cannot finish is worse than one that is a
-# little less tidy, and the cost is measured rather than assumed: three of the
-# multiplexer control lines end up unrouted, listed in the README.
+# ⚠️ U1 IS NOT ROTATED, AND THAT WAS TESTED TWICE. Its SPI, the four multiplexer
+# selects and the enable all sit on pins 12..21 — the bottom edge of the QFN —
+# and everything they talk to is spread along the board, so turning the part to
+# face them is the obvious improvement. At 180 degrees and again at 90,
+# Freerouting's autorouter finished in minutes and its OPTIMISER then ground for
+# over an hour without ever writing a session file. Three attempts, two angles,
+# same outcome. The unrotated board routes in three minutes.
+#
+# ⛔ A layout the tool cannot finish is worse than one that is a little less
+# tidy, and the cost of not rotating is measured rather than assumed: it is the
+# cluster of unrouted pins on U1's bottom edge listed in the README.
 ROTATION = {"U2": 270, "U6": 90}
 
 PARTS = [(r, v, sy, li, fp, pi) + PLACEMENT.get(r, (x, y))
@@ -589,7 +645,7 @@ POWER_FLAGS = ["GND"]
 # ⚠️ Nets that legitimately reach one pin. The op-amp spares are unused channels
 # whose inputs the datasheet wants tied, and they are named rather than shorted
 # so nobody later mistakes them for a mistake.
-SINGLE_PIN_NETS = ["SPARE1", "SPARE2", "SPARE3", "VSYS_SNS", "IMU_INT2"]
+SINGLE_PIN_NETS = ["SPARE1", "SPARE2", "VSYS_SNS", "IMU_INT2", "ANT_NC"]
 
 
 def nets():

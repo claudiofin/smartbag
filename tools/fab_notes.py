@@ -52,9 +52,16 @@ hand once it stops improving, and that step has not been done. Nothing here is
 wrong; it is incomplete, and a fabricator will not notice the difference, so it
 is said here.
 
-⛔ **Still not chosen: the camera module on J1.** The optical half of the
-recognition pipeline has no part number. Quoting assembly on this board covers
-everything except the sensor that does the recognising.
+⛔ **J1 goes to a camera that is not on this board.** The module is an Arducam
+Mega 3MP NoIR (B0435) — SPI only, six wires, no IR-cut filter — and it is bought,
+not built. Quoting assembly on this board covers everything except that module
+and the illuminator LEDs beside it, both of which live on the optics flex.
+
+⚠️ **The camera sets a limit the firmware has to respect.** Its SPI ceiling is
+8 MHz, and `ml/inference_budget.py` works out what that means: 96x96 greyscale
+takes 28 ms for a three-frame burst and fits; 320x240 RGB565 takes 461 ms and
+does not fit the firmware's 400 ms capture timeout. The camera must be
+configured low, and that is a build-time decision, not a preference.
 
 ## Board
 
@@ -123,7 +130,8 @@ first, this stackup requirement disappears with them.
 | `gerbers/*-drl_map.gbr` | drill map |
 | `smartbag-top.pos`, `smartbag-bottom.pos` | placement, mm, drill-file origin |
 | `smartbag-bom.csv` | one row per placed part, with MPN where one is chosen |
-| `bom-report.txt` | ⛔ the footprint-vs-datasheet check, including its failures |
+| `bom-report.txt` | the footprint-vs-datasheet check, including anything it rejects |
+| `drc-report.txt` | the DRC run these files were plotted from, verbatim |
 
 ⚠️ PTH and NPTH are separate files on purpose. Merged, a fab plates the mounting
 holes.
