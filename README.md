@@ -419,7 +419,7 @@ board and the tool reported the damage as its starting state.
 |---|---|
 | tracks / vias | **1713 / 393**, 4.3 m of copper |
 | DRC | **0 errors, 0 footprint errors**, schematic parity clean |
-| unconnected | **4 items of ~500** |
+| unconnected | **3 items of ~500** |
 | layers | F.Cu 724 · In2.Cu 919 · B.Cu 70 · **In1.Cu 0 — a solid ground reference** |
 
 ⛔ **Sixteen of those twenty were a pin assignment, not a routing problem.** The
@@ -442,10 +442,28 @@ and the other instances run at 8 MHz instead of 32.
 | unconnected | 16 | **4** |
 | autoroute time | 65 min | **15 min** |
 
-⚠️ **The four that are left** are `VDD_3V3` at U1 pin 10, `RADAR_EN` at U2,
-`RADAR_IRQ_R` between U1 and U6, and one ground island with nowhere to put a
-via. `finish.py` reports "no shape fits" for all of them; they are a human's
-half hour in KiCad.
+⭐ **And one of the four was closed by writing a router for it.**
+[`hardware/maze.py`](hardware/maze.py) is A* over a 0.1 mm grid, and it exists
+because `finish.py` cannot go *around*: it tries a straight line and two L-bends
+per layer, which on a board this dense all cross something. It reports that
+honestly and stops.
+
+| | |
+|---|---|
+| **zones are not obstacles** | almost all of F.Cu and B.Cu is ground pour. KiCad re-fills around new copper, so the route lays itself into the pour and the pour retracts. Treating the pour as solid finds no route anywhere. |
+| **obstacles are drawn, not computed** | testing a million grid points against two thousand segments is a minute per net; drawing those segments with a brush already fattened by (their width + clearance + ours) is milliseconds. Pillow is the collision engine. |
+| **DRC decides** | every route is applied to a copy, checked by a real `kicad-cli pcb drc`, and kept only if the board comes out with fewer unconnected items and no new violations. |
+
+It closed `RADAR_IRQ_R`, the longest of them — 108 mm from U1 to U6, across both
+flex tails.
+
+⚠️ **The three that are left** are `VDD_3V3` at U1 pin 10, `RADAR_EN` at U2, and
+one ground island with nowhere to put a via. The two signals are genuinely
+sealed: a flood fill from U1 pin 10 reaches **79 cells** before it runs out of
+board. At a 0.4 mm pitch the gap between two adjacent pads is 0.2 mm, and a
+0.1 mm track with 0.1 mm either side needs 0.3 — so the escape has to go
+outward, and outward is where the other forty pins already went. Closing them is
+a floorplan change, not a better router.
 
 ⛔ **Turning U1 round is the obvious-looking fix and it does not work.** At 180°
 and again at 90°, Freerouting's autorouter finished in minutes and its

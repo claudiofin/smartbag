@@ -13,3 +13,10 @@ python3 hardware/generate_pcb.py | tail -1
 "$KPY" hardware/specctra.py import hardware/smartbag_core.kicad_pcb hardware/smartbag_core.ses | tail -1
 "$KPY" hardware/fill_zones.py hardware/smartbag_core.kicad_pcb | tail -1
 "$KPY" hardware/stitch.py hardware/smartbag_core.kicad_pcb | tail -1
+# ⛔ THE MAZE ROUTES ARE NOT IN THE SESSION FILE. freerouting wrote the .ses and
+# gave up on four connections; hardware/maze.py closed two of them afterwards,
+# straight onto the board. Rebuilding from the session alone therefore throws
+# that work away every time — silently, because the board still looks routed.
+# It is deterministic (A* over a fixed grid, no randomness), so re-running it
+# here reproduces exactly the same two routes.
+"$KPY" hardware/maze.py hardware/smartbag_core.kicad_pcb | tail -1
