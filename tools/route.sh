@@ -28,6 +28,7 @@
 #
 # Usage:  tools/route.sh [passes]        (default 60, and 60 is the best one found)
 set -e
+set -o pipefail   # `| tail -1` otherwise hides every failure
 cd "$(dirname "$0")/.."
 
 # No bytecode cache: a stale .pyc means checking a file that is no

@@ -93,7 +93,7 @@ def inset_boundary(path, mm):
     open(path, "w").write(txt)
 
 
-def drop_orphan_fragments(board):
+def drop_orphan_fragments(board, tracks):
     """Delete copper that touches nothing at either end.
 
     ⛔ NOT "delete short tracks". A routed board has 156 segments under 0.2 mm
@@ -108,7 +108,8 @@ def drop_orphan_fragments(board):
     connected one.
     """
     conn = board.GetConnectivity()
-    conn.RecalculateRatsnest()
+    if hasattr(conn, "RecalculateRatsnest"):
+        conn.RecalculateRatsnest()
 
     # group tracks by (net, connectivity cluster) via a simple flood over
     # shared endpoints, then keep only groups with no pad and no via
@@ -117,7 +118,11 @@ def drop_orphan_fragments(board):
 
     from collections import defaultdict
     by_net = defaultdict(list)
-    for t in board.GetTracks():
+    # ⚠️ Snapshot, for the same reason drop_degenerate_segments does: once
+    # anything has been removed from the board, pcbnew's live GetTracks() wrapper
+    # comes back as a raw pointer and every method call on it fails with an error
+    # that names neither the cause nor this file.
+    for t in tracks:
         by_net[t.GetNetCode()].append(t)
 
     anchors = defaultdict(set)          # net -> set of pad positions
@@ -157,9 +162,45 @@ def drop_orphan_fragments(board):
             if not has_via and not touches_pad:
                 doomed.extend(group)
 
-    for t in doomed:
-        board.Remove(t)
-    return len(doomed)
+    # ⚠️ Returns what to remove rather than removing it: the caller takes ONE
+    # snapshot and does ONE removal pass, because pcbnew's live track list does
+    # not survive a deletion.
+    return doomed
+
+
+# ⚠️ 5 um, not 1. The first threshold was chosen as "below what a fabricator
+# resolves" and left a 1.6 um stub behind, which DRC then reported as a clearance
+# violation like any other track. The number that matters is the track WIDTH:
+# the narrowest on this board is 100 um, so a segment 5 um long lies entirely
+# inside the copper of whatever it joins at either end, twenty times over.
+DEGENERATE_NM = 5000        # 5 um
+
+
+def drop_degenerate_segments(tracks):
+    """Delete tracks whose two ends are the same point.
+
+    ⛔ FREEROUTING LEAVES SLIVERS AND DRC BELIEVES THEM. Its optimiser splits
+    polylines and rounds the join, and what survives is a segment 0.0001 mm long
+    — a tenth of a micron — sitting at a corner. Nine clearance violations on an
+    otherwise clean board were pairs of (a real track, one of these), because a
+    sliver still has a full track width and so still has a clearance envelope,
+    pointing in whatever direction the rounding chose.
+
+    ⭐ REMOVING THEM CANNOT DISCONNECT ANYTHING, and that is worth stating rather
+    than hoping. The narrowest track on this board is 0.1 mm, which is a hundred
+    times longer than the longest segment removed here: a sliver is entirely
+    inside the copper of whatever it joins, so anything that overlapped one end
+    overlaps the other. The check afterwards is DRC's unconnected count, which
+    does not move.
+
+    ⚠️ Not "short tracks" — SHORT is normal. There are 48 segments between 10 and
+    50 um on this board and every one of them is a corner in a working polyline.
+    The threshold is a micron because that is below what any fabricator resolves,
+    not because it is small.
+    """
+    return [t for t in tracks
+            if t.Type() != pcbnew.PCB_VIA_T
+            and (t.GetStart() - t.GetEnd()).EuclideanNorm() < DEGENERATE_NM]
 
 
 action, board_path = sys.argv[1], sys.argv[2]
@@ -195,11 +236,31 @@ elif action == "import":
     ok = pcbnew.ImportSpecctraSES(board, other)
     if not ok:
         sys.exit(f"ImportSpecctraSES failed <- {other}")
-    removed = drop_orphan_fragments(board)
+    # ⛔ ONE SNAPSHOT, ONE REMOVAL PASS. Both cleanups used to read the board
+    # themselves and remove as they went, and pcbnew does not survive that: once
+    # anything has been taken out, the live GetTracks() wrapper comes back as a
+    # raw pointer that will not iterate, and the second pass dies — or, on this
+    # machine, segfaults. Deciding everything against one list and removing at
+    # the end is not tidiness, it is the only order that works.
+    #
+    # ⚠️ And the failure was invisible for a while, because every line of
+    # reroute_from_session.sh ends in `| tail -1` and `set -e` reads tail's exit
+    # status. The import crashed, the script carried on, and the board came out
+    # with 117 unconnected pads and no complaint. Those scripts now set
+    # pipefail.
+    snapshot = list(board.GetTracks())
+    doomed = drop_degenerate_segments(snapshot)
+    slivers = len(doomed)
+    keep = set(id(t) for t in doomed)
+    doomed += drop_orphan_fragments(board, [t for t in snapshot
+                                            if id(t) not in keep])
+    for t in doomed:
+        board.Remove(t)
+    removed = len(doomed) - slivers
     board.Save(board_path)
     tracks = board.GetTracks()
     vias = sum(1 for t in tracks if t.Type() == pcbnew.PCB_VIA_T)
     print(f"OK  {len(tracks) - vias} tracks + {vias} vias "
-          f"({removed} orphan fragments dropped) -> {board_path}")
+          f"({removed} orphan fragments, {slivers} slivers dropped) -> {board_path}")
 else:
     sys.exit("action must be export or import")

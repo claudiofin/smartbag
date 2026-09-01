@@ -7,6 +7,7 @@
 # and that actually happened on the first pass (see the comment above OUTLINE in
 # hardware/generate_pcb.py).
 set -e
+set -o pipefail   # `| tail -1` otherwise hides every failure
 cd "$(dirname "$0")/.."
 # No bytecode cache: a stale .pyc means checking a file that is no
 # longer on disk. See tools/verify.sh.

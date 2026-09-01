@@ -87,6 +87,62 @@ def drc(path, report=None, kinds=None):
     return v, u, pairs
 
 
+def clearance_pairs(path):
+    """[(x, y, netname, length_mm)] for every item in a clearance violation."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".rpt", delete=False).name
+    subprocess.run(["kicad-cli", "pcb", "drc", "--schematic-parity",
+                    "--severity-error", "-o", tmp, path], capture_output=True)
+    text = open(tmp).read()
+    os.unlink(tmp)
+    out = []
+    for block in text.split("[clearance]")[1:]:
+        for m in re.finditer(
+                r"@\((-?[\d.]+) mm, (-?[\d.]+) mm\): Track \[([^\]]*)\][^\n]*"
+                r"length ([\d.]+) mm", block[:400]):
+            out.append((float(m.group(1)), float(m.group(2)),
+                        m.group(3), float(m.group(4))))
+    return out
+
+
+def rip_offenders(path):
+    """Delete the shorter track of each clearance pair. Returns how many.
+
+    ⛔ A ROUTER THAT CANNOT UNDO CANNOT REPAIR. maze.py could only ever add
+    copper, so a board that came back from freerouting with two tracks 0.127 mm
+    apart where the Power class asks for 0.15 was a board it had nothing to say
+    about — it would refuse its own routes for making a bad number worse and
+    stop. Removing the offending piece first turns a clearance violation into an
+    unconnected pad, which is the one problem this file knows how to solve.
+
+    ⚠️ THE SHORTER ONE, and that is a real choice rather than a coin toss: these
+    pairs are almost always a long working track and a stub the optimiser left
+    behind at a junction. Ripping the long one throws away a route that was fine
+    everywhere except one corner.
+    """
+    pairs = clearance_pairs(path)
+    if not pairs:
+        return 0
+    board = pcbnew.LoadBoard(path)
+    victims = {}
+    for i in range(0, len(pairs) - 1, 2):
+        a, b = pairs[i], pairs[i + 1]
+        v = a if a[3] <= b[3] else b
+        victims[(round(v[0], 4), round(v[1], 4))] = v[2]
+    doomed = []
+    for t in board.GetTracks():
+        if t.Type() == pcbnew.PCB_VIA_T:
+            continue
+        key = (round(t.GetStart().x / MM, 4), round(t.GetStart().y / MM, 4))
+        if key in victims and t.GetNetname() == victims[key]:
+            doomed.append(t)
+    for t in doomed:
+        board.Remove(t)
+    if doomed:
+        pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+        board.Save(path)
+    return len(doomed)
+
+
 # ── the board, as three bitmaps ──────────────────────────────────────────────
 class Grid:
     """Obstacle bitmaps for one net, over a window of the board.
@@ -479,6 +535,23 @@ def main(path, rounds=4):
     close what one round leaves; the loop stops as soon as a round gains nothing.
     """
     total = 0
+    # ⚠️ IN ITS OWN PROCESS, and that is not tidiness. pcbnew keeps a board alive
+    # behind the SWIG wrapper as long as anything references a track taken out of
+    # it, and the next LoadBoard in the same interpreter then hands back a raw
+    # pointer instead of a BOARD — which fails much later, on an unrelated line,
+    # with an error about SwigPyObject having no netlist methods. A process
+    # boundary is the only reliable way to put a board down.
+    r = subprocess.run([sys.executable, __file__, "--rip", path],
+                       capture_output=True, text=True)
+    # ⚠️ The last integer line, not the whole of stdout: KiCad's Python prints
+    # wxWidgets assertions to stdout before anything this file writes.
+    ripped = 0
+    for line in reversed((r.stdout or "").splitlines()):
+        if line.strip().isdigit():
+            ripped = int(line.strip())
+            break
+    if ripped:
+        print(f"  ripped {ripped} track(s) that broke a clearance rule")
     for _ in range(rounds):
         gained = _pass(path)
         total += gained
@@ -566,4 +639,7 @@ def _pass(path):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    if len(sys.argv) > 2 and sys.argv[1] == "--rip":
+        print(rip_offenders(sys.argv[2]))
+    else:
+        main(sys.argv[1])

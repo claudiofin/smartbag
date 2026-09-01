@@ -7,6 +7,13 @@
 # the session makes it a reviewable artefact that regenerates the board in two
 # seconds on a machine with no Java.
 set -e
+# ⛔ AND pipefail, WITHOUT WHICH set -e IS DECORATION HERE. Every step in this
+# file ends in `| tail -1`, so the exit status the shell sees is tail's, and
+# tail always succeeds. A crash inside specctra.py printed its traceback and the
+# script carried straight on into fill, stitch and route — producing a board
+# with 117 unconnected pads out of an import that had never happened, and
+# reporting it as a normal run.
+set -o pipefail
 cd "$(dirname "$0")/.."
 KPY="${KICAD_PYTHON:-/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3}"
 python3 hardware/generate_pcb.py | tail -1

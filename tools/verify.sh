@@ -8,6 +8,7 @@
 # and the device still agree on a byte layout, and the physics scripts know
 # what the design costs. Each has caught things the others could not see.
 set -e
+set -o pipefail   # `| tail -1` otherwise hides every failure
 cd "$(dirname "$0")/.."
 # ⛔ NO BYTECODE CACHE. Every number this project prints comes from importing
 # hardware/*.py and measuring what is in them, which makes a stale __pycache__
