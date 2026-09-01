@@ -171,6 +171,7 @@ BOM = {
                 "address, both on the datasheet's instruction (7.2.3).",
     ),
     "U5": PART(
+        dk="296-47323-1-ND", usd1=0.33, usd10=0.273, dk_stock=0, quoted="2026-09-01",
         mpn="DRV5032FBDBZR", manufacturer="Texas Instruments",
         description="Omnipolar digital Hall latch, 1.65-5.5 V, ~540 nA average",
         package="SOT-23-3", body=(2.92, 2.37, 1.12), pitch=0.95, pins=3,
@@ -180,6 +181,7 @@ BOM = {
                 "lets the rest of the board sleep.",
     ),
     "U7": PART(
+        dk="", usd1=0.69, usd10=None, dk_stock=None, quoted="2026-09-01",
         mpn="CD74HC4067SM96", manufacturer="Texas Instruments",
         description="16:1 analog multiplexer, the FSR column selector",
         package="SSOP-24", body=(5.3, 8.2, 2.0), pitch=0.65, pins=24,
@@ -212,6 +214,7 @@ BOM = {
                 "at VREF rather than left floating.",
     ),
     "Y1": PART(
+        dk="", usd1=0.49, usd10=None, dk_stock=None, quoted="2026-09-01",
         mpn="ABM8-32.000MHZ-B2-T", manufacturer="Abracon",
         description="32 MHz crystal, Cl = 8 pF — the SoC's HFXO",
         package="SMD-2016-4", body=(2.0, 1.6, 0.5), pitch=None, pins=4,
@@ -221,6 +224,7 @@ BOM = {
                 "(table 87), not a guess.",
     ),
     "Y2": PART(
+        dk="", usd1=0.72, usd10=None, dk_stock=None, quoted="2026-09-01",
         mpn="ABM8-24.000MHZ-B2-T", manufacturer="Abracon",
         description="24 MHz crystal for the first radar",
         package="SMD-2016-4", body=(2.0, 1.6, 0.5), pitch=None, pins=4,
@@ -230,6 +234,7 @@ BOM = {
                 "a clock input, so the second radar cannot share the first's.",
     ),
     "Y3": PART(
+        dk="", usd1=0.72, usd10=None, dk_stock=None, quoted="2026-09-01",
         mpn="ABM8-24.000MHZ-B2-T", manufacturer="Abracon",
         description="24 MHz crystal for the second radar",
         package="SMD-2016-4", body=(2.0, 1.6, 0.5), pitch=None, pins=4,
@@ -237,6 +242,7 @@ BOM = {
         pdf=None, usd=None, stock="commodity", verdict="OK.",
     ),
     "J1": PART(
+        dk="", usd1=0.8207, usd10=None, dk_stock=None, quoted="2026-09-01",
         mpn="FH12-12S-0.5SH(55)", manufacturer="Hirose",
         description="FFC connector, 12 way, 0.5 mm — the optics flex",
         package="FH12-12S", body=(10.4, 4.3, 1.0), pitch=0.5, pins=12,
@@ -247,6 +253,7 @@ BOM = {
                 "schematic: its I2C, shutdown and interrupt cross this cable.",
     ),
     "Q1": PART(
+        dk="SI2302CDS-T1-GE3CT-ND", usd1=0.82, usd10=0.507, dk_stock=247114, quoted="2026-09-01",
         mpn="SI2302CDS-T1-GE3", manufacturer="Vishay",
         description="Logic-level N-channel MOSFET — the illuminator switch",
         package="SOT-23", body=(2.9, 1.3, 1.1), pitch=0.95, pins=3,
@@ -258,6 +265,7 @@ BOM = {
                 "what a GPIO will source.",
     ),
     "Y4": PART(
+        dk="535-9544-1-ND", usd1=0.9, usd10=0.782, dk_stock=16302, quoted="2026-09-01",
         mpn="ABS07-32.768KHZ-9-T", manufacturer="Abracon",
         description="32.768 kHz crystal, Cl = 9 pF — the low-power timebase",
         package="SMD-2012-2", body=(2.0, 1.2, 0.6), pitch=None, pins=2,
@@ -268,6 +276,7 @@ BOM = {
                 "day. A claim about a clock deserves a clock.",
     ),
     "J4": PART(
+        dk="", usd1=0.925, usd10=None, dk_stock=None, quoted="2026-09-01",
         mpn="FH12-24S-0.5SH(55)", manufacturer="Hirose",
         description="FFC connector, 24 way — the taxel matrix",
         package="FH12-24S", body=(16.4, 4.3, 1.0), pitch=0.5, pins=24,
@@ -276,6 +285,7 @@ BOM = {
         verdict="OK — 16 columns, 6 rows, a ground and a shield tab.",
     ),
     "J2": PART(
+        dk="455-1720-ND", usd1=0.15, usd10=0.127, dk_stock=50928, quoted="2026-09-01",
         mpn="S3B-PH-K-S(LF)(SN)", manufacturer="JST",
         description="PH series 3-pin 2.0 mm side-entry header — the cell",
         package="JST-PH-03", body=(7.9, 4.5, 6.0), pitch=2.0, pins=3,
@@ -292,6 +302,7 @@ BOM = {
                 "and this board had NTC on 2 and the cell's negative on 3.",
     ),
     "J3": PART(
+        dk="455-SM02B-SRSS-TBCT-ND", usd1=0.38, usd10=0.325, dk_stock=84360, quoted="2026-09-01",
         mpn="SM02B-SRSS-TB(LF)(SN)", manufacturer="JST",
         description="SH series 2-pin header — the Qi receiver coil",
         package="JST-SH-02", body=(4.25, 2.9, 2.9), pitch=1.0, pins=2,
@@ -299,6 +310,7 @@ BOM = {
         pdf=None, usd=None, stock="commodity", verdict="OK.",
     ),
     "J5": PART(
+        dk="455-SM04B-SRSS-TBCT-ND", usd1=0.51, usd10=0.433, dk_stock=191162, quoted="2026-09-01",
         mpn="SM04B-SRSS-TB(LF)(SN)", manufacturer="JST",
         description="SH series 4-pin header — SWD",
         package="JST-SH-04", body=(6.25, 2.9, 2.9), pitch=1.0, pins=4,
@@ -306,6 +318,7 @@ BOM = {
         pdf=None, usd=None, stock="commodity", verdict="OK.",
     ),
     "AE1": PART(
+        dk="712-2450AT43F0100001ECT-ND", usd1=0.8, usd10=0.684, dk_stock=35448, quoted="2026-09-01",
         mpn="2450AT43F0100E", manufacturer="Johanson Technology",
         description="2.4 GHz ceramic chip antenna",
         package="SMD chip", body=(6.0, 2.0, 1.2), pitch=None, pins=2,
@@ -342,6 +355,7 @@ OPTICS = {
                 "enclosure has to be labelled as one.",
     ),
     "D1..D4": PART(
+        dk="VSMY1850X01CT-ND", usd1=1.27, usd10=0.897, dk_stock=5319, quoted="2026-09-01",
         mpn="VSMY1850X01", manufacturer="Vishay",
         description="850 nm infrared emitter, 0805, Vf 1.65 V at 100 mA",
         package="0805", body=(2.0, 1.25, 0.85), pitch=None, pins=2,
@@ -355,6 +369,7 @@ OPTICS = {
                 "ml/render_dataset.py trains at one brightness.",
     ),
     "J11": PART(
+        dk="", usd1=0.68, usd10=None, dk_stock=None, quoted="2026-09-01",
         mpn="SM06B-SRSS-TB(LF)(SN)", manufacturer="JST",
         description="SH series 6-pin 1.0 mm header — the camera module",
         package="JST-SH-06", body=(8.25, 2.9, 2.9), pitch=1.0, pins=6,

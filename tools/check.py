@@ -518,6 +518,22 @@ _cc = subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
 check("the generated pin map compiles with -Werror", _cc.returncode == 0,
       _cc.stderr.strip().splitlines()[0] if _cc.stderr.strip() else "")
 
+print("\n── every named part has a price against it")
+# ⛔ "A BOM IS NOT AN ORDER" AND THIS IS THE LINE BETWEEN THEM. Every entry here
+# is a real part with a datasheet whose package was measured against it; that
+# says nothing about what it costs or whether it exists this week. Fifteen of
+# the twenty-seven lines had no price at all until they were looked up one at a
+# time, and a list that quietly goes back to fourteen is a list nobody can send
+# to a distributor.
+_unpriced = [ref for ref, e in list(_bom.BOM.items()) + list(_bom.OPTICS.items())
+             if not (e.get("usd10") or e.get("usd1") or e.get("usd"))]
+check("every named line carries a distributor price", not _unpriced,
+      f"{len(_unpriced)} without one: {', '.join(_unpriced)}")
+_undated = [ref for ref, e in list(_bom.BOM.items()) + list(_bom.OPTICS.items())
+            if (e.get("usd1") or e.get("usd10")) and not e.get("quoted")]
+check("and says when it was quoted", not _undated,
+      f"{len(_undated)} priced with no date: {', '.join(_undated)}")
+
 print("\n── the fuel gauge agrees with the cell it is gauging")
 # ⛔ THE OLD GAUGE WAS A STRAIGHT LINE AND THE CELL'S OWN DATASHEET REFUTES IT.
 # "Delivery State of Charge: Max. 30% (3.75-3.79V); Optional 60% (3.85-3.95V)"

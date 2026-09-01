@@ -111,6 +111,30 @@ def main():
     print(f"  not yet quoted:       {len(unquoted)} lines — {', '.join(unquoted)}")
     print("  passives, PCBs, stencil and assembly are not in that figure.")
 
+    # ⛔ A PRICE IS NOT AVAILABILITY, AND THE THING THAT ACTUALLY DELAYS A BUILD
+    # IS THE ONE LINE NOBODY HAS. Every part below is real, catalogued and
+    # priced; the question an order asks is whether it is on a shelf today.
+    short, unknown = [], []
+    for ref, entry in list(bom.BOM.items()) + list(bom.OPTICS.items()):
+        want = max(counts.get(ref, 1), 1) * boards + SPARE_MIN
+        have = entry.get("dk_stock")
+        if have is None:
+            unknown.append(ref)
+        elif have < want:
+            short.append((ref, entry["mpn"], have, want))
+
+    if short:
+        print(f"\n  ⛔ {len(short)} line(s) cannot be filled from stock today:")
+        for ref, mpn, have, want in short:
+            print(f"     {ref:<8} {mpn:<34} {have} in stock, {want} needed")
+        print("     These set the build date. Order them first and separately;")
+        print("     everything else on this list ships the day it is ordered.")
+    if unknown:
+        print(f"\n  ⚠️ {len(unknown)} line(s) priced without a stock figure: "
+              f"{', '.join(unknown)}")
+        print("     The distributor's page gave a price and no quantity. Check "
+              "them in the basket.")
+
 
 if __name__ == "__main__":
     main()
