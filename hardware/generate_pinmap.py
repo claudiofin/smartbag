@@ -182,6 +182,19 @@ def write_overlay(pins):
  * and that pin map is what this file is.
  */
 
+/* ⛔ I2C21 AND NOT I2C20. On nRF54L15 the peripheral instances are shared: SPI20,
+ * SPIM20, TWIM20 and UARTE20 are the same block, and enabling two of them stops
+ * the build with a static assertion rather than misbehaving at runtime. The DK
+ * puts its console on uart20, so the bus had to move — and on the SmartBag board,
+ * which has no console UART, instance 20 would have been free and this would
+ * have been discovered on silicon instead.
+ *
+ * ⚠️ EVERY PINCTRL NODE NEEDS A SLEEP STATE AS WELL AS A DEFAULT. The board's
+ * own devicetree gives spi00 both, so an overlay that replaces pinctrl-names
+ * with a single "default" leaves pinctrl-1 defined and unnamed — and the build
+ * stops with "has 1 strings, expected 2". It is also not busywork: the sleep
+ * state is what disconnects the pins when the peripheral is powered down, and
+ * this design spends almost all of its life powered down. */
 &pinctrl {{
     spi00_default: spi00_default {{
         group1 {{
@@ -191,11 +204,28 @@ def write_overlay(pins):
         }};
     }};
 
-    i2c20_default: i2c20_default {{
+    spi00_sleep: spi00_sleep {{
+        group1 {{
+            psels = <NRF_PSEL(SPIM_SCK, {pins['SPI_SCK'][0]}, {pins['SPI_SCK'][1]})>,
+                    <NRF_PSEL(SPIM_MOSI, {pins['SPI_MOSI'][0]}, {pins['SPI_MOSI'][1]})>,
+                    <NRF_PSEL(SPIM_MISO, {pins['SPI_MISO'][0]}, {pins['SPI_MISO'][1]})>;
+            low-power-enable;
+        }};
+    }};
+
+    i2c21_default: i2c21_default {{
         group1 {{
             psels = <NRF_PSEL(TWIM_SDA, {pins['I2C_SDA'][0]}, {pins['I2C_SDA'][1]})>,
                     <NRF_PSEL(TWIM_SCL, {pins['I2C_SCL'][0]}, {pins['I2C_SCL'][1]})>;
             bias-pull-up;
+        }};
+    }};
+
+    i2c21_sleep: i2c21_sleep {{
+        group1 {{
+            psels = <NRF_PSEL(TWIM_SDA, {pins['I2C_SDA'][0]}, {pins['I2C_SDA'][1]})>,
+                    <NRF_PSEL(TWIM_SCL, {pins['I2C_SCL'][0]}, {pins['I2C_SCL'][1]})>;
+            low-power-enable;
         }};
     }};
 }};
@@ -203,15 +233,17 @@ def write_overlay(pins):
 &spi00 {{
     status = "okay";
     pinctrl-0 = <&spi00_default>;
-    pinctrl-names = "default";
+    pinctrl-1 = <&spi00_sleep>;
+    pinctrl-names = "default", "sleep";
     /* ⚠️ No cs-gpios: there are three devices on this bus and one CSN pin, so
      * the selects are plain GPIOs driven by sb_hal_zephyr.c. */
 }};
 
-&i2c20 {{
+&i2c21 {{
     status = "okay";
-    pinctrl-0 = <&i2c20_default>;
-    pinctrl-names = "default";
+    pinctrl-0 = <&i2c21_default>;
+    pinctrl-1 = <&i2c21_sleep>;
+    pinctrl-names = "default", "sleep";
     clock-frequency = <I2C_BITRATE_FAST>;
 
     npm1300: pmic@6b {{

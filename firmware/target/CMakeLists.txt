@@ -16,6 +16,7 @@ target_sources(app PRIVATE
     src/main.c
     src/sb_hal_zephyr.c
     src/npm1300.c
+    src/gatt.c
     ../smartbag.c
     ../sb_power.c
     ../sb_sensors.c

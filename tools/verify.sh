@@ -34,6 +34,19 @@ make -s -C firmware vectors >/dev/null
 node app/test_protocol.mjs | tail -1
 
 echo
+# ⭐ AND THE TARGET IMAGE, because "it compiles" is a claim like any other. Four
+# things in firmware/target were wrong when it was written against the API
+# instead of against a compiler, and each was invisible until this ran.
+#
+# ⚠️ Skipped, not failed, where there is no Zephyr: a checkout on a machine
+# without the SDK should still be able to verify everything else.
+if [ -d "${ZEPHYR_BASE:-$HOME/zephyrproject/zephyr}" ]; then
+  echo "== firmware for the nRF54L15 =="
+  ./tools/build_firmware.sh build/verify 2>&1 | grep -E "FLASH:|RAM:" | sed 's/^/  /'
+else
+  echo "== firmware for the nRF54L15 ==  (skipped: no Zephyr)"
+fi
+
 echo "== ERC =="
 kicad-cli sch erc --severity-all --exit-code-violations \
   -o /tmp/smartbag_erc.rpt hardware/smartbag_core.kicad_sch >/dev/null 2>&1 \

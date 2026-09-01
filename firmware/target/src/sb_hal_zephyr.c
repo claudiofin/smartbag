@@ -40,7 +40,7 @@ static const struct device *const ports[3] = {
 };
 
 static const struct device *const spi_bus = DEVICE_DT_GET(DT_NODELABEL(spi00));
-static const struct device *const i2c_bus = DEVICE_DT_GET(DT_NODELABEL(i2c20));
+static const struct device *const i2c_bus = DEVICE_DT_GET(DT_NODELABEL(i2c21));
 static const struct device *const saadc = DEVICE_DT_GET(DT_NODELABEL(adc));
 
 /* ⚠️ Chip select is a plain GPIO and not the SPI driver's cs field, because
@@ -53,7 +53,6 @@ static struct spi_config spi_cfg = {
     .frequency = 32000000,
     .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_OP_MODE_MASTER,
     .slave = 0,
-    .cs = { 0 },
 };
 
 static int cfg_out(uint8_t port, uint8_t pin, int flags)
@@ -238,4 +237,14 @@ int sb_hal_zephyr_init(sb_hal *hal)
         .ctx = NULL,
     };
     return 0;
+}
+
+/* ⚠️ NOT IMPLEMENTED, AND REPORTED AS ZERO RATHER THAN GUESSED. A taxel fault is
+ * a site that reads open or shorted across a whole sweep, which sb_fsr.c can
+ * only conclude once the sweep runs on real electrodes. Until then the honest
+ * number is none-known, and the field exists so the app can show it the day it
+ * means something. */
+uint8_t sb_fsr_faults(void)
+{
+	return 0;
 }

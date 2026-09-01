@@ -18,6 +18,7 @@
 #include "sb_power.h"
 #include "sb_sensors.h"
 #include "sb_fsr.h"
+#include "sb_ble.h"
 
 LOG_MODULE_REGISTER(smartbag, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -25,10 +26,12 @@ int sb_hal_zephyr_init(sb_hal *hal);
 bool sb_pmic_ready(void);
 int16_t sb_pmic_cell_temp_c(bool *valid);
 void sb_pmic_apply(const sb_charge_decision *d);
+int sb_gatt_start(const sb_device *d, const sb_config *cfg, sb_enroll *e);
 
 static sb_hal hal;
 static sb_device dev;
 static sb_sensors sensors;
+static sb_enroll enroll;
 static const sb_config *const cfg = &SB_DEFAULTS;
 
 /* ⚠️ The Hall sensor is the whole wake-up chain's first link and it is also the
@@ -56,6 +59,12 @@ int main(void)
          * what is in it and still has to charge safely; the radio is the least
          * important thing here and must not take the rest down with it. */
         LOG_WRN("bluetooth did not start (%d) — running without it", err);
+    } else {
+        sb_enroll_init(&enroll, 1);
+        err = sb_gatt_start(&dev, cfg, &enroll);
+        if (err) {
+            LOG_WRN("advertising did not start (%d)", err);
+        }
     }
 
     if (!sb_pmic_ready()) {
