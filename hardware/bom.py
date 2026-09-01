@@ -118,22 +118,34 @@ BOM = {
                 "datasheet figure, which moves Cs by the same.",
     ),
     "BT1": PART(
-        mpn="made-to-order pouch, 4.2 x 58 x 148 mm",
-        manufacturer="(not selected)",
-        description="Li-polymer 3.7 V ~2000 mAh with protection circuit and NTC",
-        package="pouch", body=(148.0, 58.0, 4.2), pitch=None, pins=3,
-        datasheet="", pdf=None, usd=None,
-        stock="⛔ NOT A CATALOGUE PART",
-        verdict="⛔ THE ONE LINE IN THIS BILL OF MATERIALS THAT IS NOT A PART "
-                "YOU CAN ORDER. At 4.2 x 58 x 148 mm this is a semi-custom "
-                "pouch — the shape follows from the insert floor, and nobody "
-                "stocks it. What CAN be specified, and is: 3.7 V nominal, "
-                "~2000 mAh, and a protection circuit with overvoltage, "
-                "undervoltage and overcurrent-discharge protection, which "
-                "nPM1300 section 3.4 requires of anything on its VBAT pin. "
-                "⭐ Plus a 10 kohm NTC at B25/50 = 3380 K brought out on a "
-                "third wire — one of exactly three thermistor types the PMIC "
-                "supports, and the reason J2 has three pins.",
+        mpn="LP523450JU+PCM+JST PHR-3 70MM", manufacturer="Jauch Quartz",
+        description="Li-Po 3.7 V 950 mAh pouch, PCM + 10k NTC, JST PHR-3 harness",
+        package="pouch 53.0 x 34.5 x 5.4 mm", body=(53.0, 34.5, 5.8), pitch=2.0,
+        pins=3,
+        # ⭐ The cell's own charge table, machine-readable, so firmware/sb_power.h
+        # can be checked against it instead of against a memory of it.
+        capacity_mah=950, full_ma=1000, reduced_ma=200,
+        charge_bands_c=(0, 15, 45, 55),   # none / 0.2C / 1.0C / 0.5C / none
+        ntc="10k B=3435",
+        datasheet="https://www.jauch.com/downloadfile/"
+                  "63bedb31cabb36c600600ee0ce09460cb/lp523450jupcmjst_phr-3_70mm.pdf",
+        pdf=None, usd=11.71, stock="Digi-Key 1908-LP523450JU+PCM+JSTPHR-370MM-ND",
+        verdict="⭐ THE LINE THAT USED TO SAY 'NOT A PART YOU CAN ORDER'. It was "
+                "a 4.2 x 58 x 148 mm semi-custom pouch — a shape derived from "
+                "the insert floor, which nobody stocks, so the whole design "
+                "ended at a battery you would have to have made. This is a "
+                "catalogue cell with 507 in stock. ⭐ AND IT BRINGS ITS OWN "
+                "THERMISTOR: 10 kΩ ±1% B=3435, on pin 3 of the harness, which "
+                "is exactly what nPM1300 wants and what firmware/sb_power.c has "
+                "been written against since the thermal analysis asked for it. "
+                "⚠️ 950 mAh, not 2000 — and the capacity was never the "
+                "constraint: thermal/budget.py measures 0.14 mW average, which "
+                "this cell carries for nearly three years. ⛔ WHAT IT DOES "
+                "CONSTRAIN is charge current: 1.0 C is 1000 mA and the design "
+                "was written around 5 W of input. See firmware/sb_power.h. "
+                "⭐ And being 53 x 34.5 instead of 148 x 58, it no longer has to "
+                "sit on top of the Qi coil — which is the single assumption the "
+                "thermal model's bad answer rested on.",
     ),
     "U4": PART(
         mpn="BMI270", manufacturer="Bosch Sensortec",
@@ -248,19 +260,20 @@ BOM = {
         verdict="OK — 16 columns, 6 rows, a ground and a shield tab.",
     ),
     "J2": PART(
-        mpn="SM03B-SRSS-TB(LF)(SN)", manufacturer="JST",
-        description="SH series 3-pin 1.0 mm header — the cell and its thermistor",
-        package="JST-SH-03", body=(5.25, 2.9, 2.9), pitch=1.0, pins=3,
-        datasheet="https://www.jst.com/wp-content/uploads/2021/01/eSH1.pdf",
+        mpn="S3B-PH-K-S(LF)(SN)", manufacturer="JST",
+        description="PH series 3-pin 2.0 mm side-entry header — the cell",
+        package="JST-PH-03", body=(7.9, 4.5, 6.0), pitch=2.0, pins=3,
+        datasheet="https://www.jst-mfg.com/product/pdf/eng/ePH.pdf",
         pdf=None, usd=None, stock="commodity",
-        verdict="THREE pins, not two, and the third is the reason the charge "
-                "policy means anything. ⛔ RT1 used to be a 0402 on the main "
-                "board — which measures the main board, twenty millimetres of "
-                "foam away from the cell whose temperature the whole policy is "
-                "about. The nPM1300 calls it 'the battery thermistor'; it "
-                "belongs to the pack. ⚠️ And at the 5 W the design originally "
-                "asked for, an SH contact is at its 1 A rating — a 2 mm PH "
-                "would be the honest choice.",
+        verdict="⭐ THE MATING HALF OF A BATTERY THAT EXISTS. It is a PH and not "
+                "the SH it used to be for two reasons, and only one of them is "
+                "the one this file predicted: a PH contact is rated 2 A against "
+                "the SH's 1 A, which the charge current needed — and the pack "
+                "that is going to be bought comes with its harness moulded onto "
+                "a PHR-3 housing. An adapter between a cell and a charger is not "
+                "a thing anyone should build. ⛔ And the PIN ORDER had to change "
+                "with it: the harness is 1 red (+), 2 black (−), 3 yellow (NTC), "
+                "and this board had NTC on 2 and the cell's negative on 3.",
     ),
     "J3": PART(
         mpn="SM02B-SRSS-TB(LF)(SN)", manufacturer="JST",

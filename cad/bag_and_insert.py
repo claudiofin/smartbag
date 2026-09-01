@@ -128,33 +128,50 @@ def bag_hardware():
 
 # ══ INSERT ═══════════════════════════════════════════════════════════════════
 def insert_base():
-    """Power plate: LiPo pocket + annular recess for the Qi coil.
+    """Power plate: a pocket for the cell and a recess for the coil, SIDE BY SIDE.
 
-    ⚠️ The cell sits UNDER the coil, not next to it: the Qi coil has to face the
-    bottom of the bag (that is what rests on the charging pad), and a LiPo cell
-    between coil and pad would absorb the field. So the coil recess opens
-    downwards and the cell pocket opens upwards.
+    ⛔ THEY USED TO BE STACKED, AND THAT WAS THE THERMAL PROBLEM. The reasoning
+    was sound as far as it went: the coil has to face the bottom of the bag,
+    because that is what rests on a charging pad, and a lithium cell between the
+    coil and the pad would absorb the field. So the coil recess opened downwards
+    and the cell sat on top of it — leaving a watt of charging loss with a
+    lithium cell directly above it and nowhere else to go. thermal/budget.py put
+    the cell near 60 °C against a 45 °C limit, and that number rests entirely on
+    this geometry.
+
+    ⭐ A REAL CELL DISSOLVED IT. The old pouch was 148 mm long because it was
+    drawn to fill the floor; Jauch's LP523450JU is 53 mm, which leaves 170 mm of
+    floor free. The cell moves aside, the coil keeps the middle — a charging pad
+    is a spot on a table you put the bag down on, and a receiver coil off to one
+    side is one you would have to aim. Neither is above the other now, so the
+    cell is not in the field's way AND not on top of the loss.
     """
     p = rrect(INS_W - 3, INS_D - 3, INS_R - 1.5, INS_BASE_H, Z_BASE)
-    # cell pocket, open at the top
-    p = p.cut(rrect(150, 60, 8, 4.6, Z_BASE + INS_BASE_H - 4.6))
+    # cell pocket, open at the top, at the cell's own size plus slack
+    depth = CELL_T + CELL_CLEAR
+    pocket = rrect(CELL_L + 2 * CELL_CLEAR, CELL_W + 2 * CELL_CLEAR, 3.0, depth,
+                   Z_BASE + INS_BASE_H - depth).translate((CELL_X, 0, 0))
+    p = p.cut(pocket)
     # coil recess, open at the bottom
-    coil = (cq.Workplane("XY").center(0, 0).circle(24.0).circle(10.0)
+    coil = (cq.Workplane("XY").center(QI_X, 0).circle(QI_R_OUT).circle(QI_R_IN)
             .extrude(1.4).translate((0, 0, Z_BASE)))
     return p.cut(coil)
 
 
 def battery():
-    return (rrect(148, 58, 7, 4.2, Z_BASE + INS_BASE_H - 4.4)
-            .edges("|X or |Y").fillet(1.0))
+    """Jauch LP523450JU, at the thickness it reaches after cycling."""
+    return (rrect(CELL_L, CELL_W, 3.0, CELL_T,
+                  Z_BASE + INS_BASE_H - CELL_T - 0.4)
+            .translate((CELL_X, 0, 0))
+            .edges("|X or |Y").fillet(0.8))
 
 
 def qi_coil():
     """Flat coil: 9 concentric turns of litz wire."""
     turns = []
     for i in range(9):
-        r = 10.6 + i * 1.5
-        turns.append(cq.Workplane("XY").center(0, 0)
+        r = QI_R_IN + 0.6 + i * 1.5
+        turns.append(cq.Workplane("XY").center(QI_X, 0)
                      .circle(r + 0.45).circle(r - 0.45).extrude(0.9)
                      .translate((0, 0, Z_BASE + 0.15)))
     c = turns[0]

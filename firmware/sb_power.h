@@ -1,4 +1,4 @@
-/* The charge policy: what stops the cell reaching 60 °C in a closed bag.
+/* The charge policy: the cell's own temperature bands, and a closed-bag limit.
  *
  * ⛔ THIS IS THE ONLY OPEN FINDING IN THE PROJECT, IN CODE. thermal/budget.py
  * has printed the same red line on every run for a long time: 5 W into a Qi coil
@@ -25,19 +25,36 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* ── from thermal/budget.py ──────────────────────────────────────────────── */
-#define SB_CELL_LIMIT_C 45          /* standard Li-ion charge ceiling      */
+/* ── from the cell's datasheet, and from thermal/budget.py ───────────────── */
+/* ⛔ THESE USED TO BE A GENERIC LITHIUM CELL. "Standard Li-ion charge ceiling",
+ * "half current" — reasonable numbers for a cell nobody had chosen, which is
+ * what BT1 was: a 148 mm semi-custom pouch drawn to fill the insert floor. The
+ * cell is now Jauch LP523450JU, a catalogue part, and it states its own bands:
+ *
+ *   0 to +15 C   0.2 C max   (200 mA)
+ *   +15 to +45 C 1.0 C max   (1000 mA)
+ *   +45 to +55 C 0.5 C max   (500 mA)
+ *
+ * ⚠️ So the thresholds MOVED — 10/40 became 15/45 — and the ceiling went from 45
+ * to 55. The old numbers were not wrong, they were a guess that happened to be
+ * conservative. Being conservative by accident is not the same as being right.
+ */
+#define SB_CELL_CAPACITY_MAH 950    /* LP523450JU, minimum capacity        */
+#define SB_CELL_FULL_MA 1000        /* 1.0 C, the +15..+45 C band          */
+#define SB_CELL_REDUCED_MA 200      /* 0.2 C, the cold band                */
+#define SB_CELL_LIMIT_C 45          /* above this the cell derates         */
+#define SB_CELL_ABS_MAX_C 55        /* above this it must not charge       */
 #define SB_CELL_MARGIN_K 5          /* nobody designs to the limit itself  */
 #define SB_CHG_FULL_MW 5000         /* what a Qi pad will deliver          */
-#define SB_CHG_SLOW_MW 2200         /* what a CLOSED bag can dissipate     */
+#define SB_CHG_SLOW_MW 2900         /* what a CLOSED bag can dissipate     */
 
 /* ⚠️ JEITA, not a single threshold. A lithium cell has four temperature bands
  * and only one of them allows full current; the nPM1300 implements this in
  * hardware and these are the numbers it gets told. */
 #define SB_JEITA_COLD_C 0           /* below: no charging at all           */
-#define SB_JEITA_COOL_C 10          /* 0..10: half current                 */
-#define SB_JEITA_WARM_C 40          /* 40..45: half current                */
-#define SB_JEITA_HOT_C SB_CELL_LIMIT_C
+#define SB_JEITA_COOL_C 15          /* 0..15: 0.2 C, from the datasheet    */
+#define SB_JEITA_WARM_C SB_CELL_LIMIT_C   /* 45..55: 0.5 C                 */
+#define SB_JEITA_HOT_C SB_CELL_ABS_MAX_C
 
 typedef enum {
     SB_CHG_OFF = 0,

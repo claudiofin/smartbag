@@ -34,7 +34,7 @@ HANDLE_Z = 176.0                         # handles attach to the body, not the r
 
 # ─── Insert ───────────────────────────────────────────────────────────────────
 INS_W, INS_D, INS_R = 225.0, 78.0, 16.0
-INS_BASE_H = 8.0         # power plate: LiPo + Qi coil
+INS_BASE_H = 8.0         # power plate: LiPo + Qi coil, SIDE BY SIDE — see below
 INS_FSR_H = 1.6          # sensing floor
 INS_WALL_H = 150.0
 INS_COLLAR_H = 20.0
@@ -46,6 +46,33 @@ Z_FSR = Z_BASE + INS_BASE_H
 Z_WALLS = Z_FSR + INS_FSR_H
 Z_COLLAR = Z_WALLS + INS_WALL_H
 INS_TOTAL_H = Z_COLLAR + INS_COLLAR_H
+
+# ─── The power plate: a real cell, and the coil no longer under it ────────────
+# ⛔ THE OLD CELL WAS A SHAPE, NOT A PART. 4.2 x 58 x 148 mm was derived from the
+# floor it had to fit, which is how you specify a semi-custom pouch and how you
+# end up with a design that stops at "have a battery made". These numbers are
+# Jauch LP523450JU, on a distributor's shelf, with a PCM and a 10 kΩ B=3435
+# thermistor on the third wire of its harness.
+#
+# ⚠️ THICKNESS IS THE POST-CYCLING FIGURE. The datasheet gives 5.4 mm delivered
+# and 5.8 mm after cycling: a lithium pouch swells as it ages, and a pocket cut
+# to the delivered thickness becomes a press that pushes on the cell it holds.
+CELL_L, CELL_W, CELL_T = 53.0, 34.5, 5.8        # Jauch LP523450JU
+CELL_CLEAR = 1.0                                 # pocket slack, each side
+
+# ⭐ AND THE COIL IS BESIDE THE CELL NOW, NOT UNDER IT. thermal/budget.py's whole
+# bad answer — a cell near 60 °C against a 45 °C limit — rests on one assumption
+# stated in its first paragraph: "the Qi coil sits directly under the LiPo". It
+# did, because a 148 mm cell covered the floor and there was nowhere else for the
+# coil to be. A 53 mm cell leaves 170 mm of floor, so the two now sit side by
+# side and the watt of charging loss has to travel through the foam to reach the
+# cell instead of straight up into it.
+QI_R_OUT, QI_R_IN = 24.0, 10.0                   # the coil's own radii
+# ⚠️ The COIL keeps the middle and the cell moves. A charging pad is a spot on a
+# table that you put the bag down on: a receiver coil somewhere off to one side
+# is a coil you have to aim, and nobody aims a handbag.
+CELL_X = -62.0                                   # cell centre, clear of the coil
+QI_X = 0.0                                       # coil centre: the middle
 
 # Dividers, which are also the compartments the app names positions by.
 DIVIDER_X = INS_W / 6

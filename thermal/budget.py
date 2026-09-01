@@ -147,21 +147,47 @@ def main():
           f"{lost:.2f} W dissipated for {CHARGE_HOURS:.1f} h")
     print(f"   whole-bag rise: +{bag_rise:.1f} K")
 
-    # ⛔ The whole-bag number is the reassuring one and it is the wrong one. The
-    # loss is not spread over the bag: it is in the coil and the PMIC, and the
-    # cell is sitting on top of them. What decides the cell temperature is the
-    # series resistance from the coil face to open air, and the first term in it
-    # is the insert wall — which was chosen to be soft, and soft means insulating.
+    # ⛔ The whole-bag number is the reassuring one and it is the wrong one for
+    # the COIL. The loss is not spread over the bag: it is in the coil and the
+    # PMIC, and what decides the temperature there is the series resistance from
+    # the coil face to open air — whose first term is the insert wall, which was
+    # chosen to be soft, and soft means insulating.
     coil_area = math.pi * (COIL_R_M ** 2)       # the Qi coil, from the CAD
     r_wall = WALL_T_M / (WALL_K * coil_area * SPREADING)
     r_conv = 1.0 / (h_still * coil_area * SPREADING)
-    local_rise = lost * (r_wall + r_conv)
-    cell_temp = AMBIENT + bag_rise + local_rise
+    coil_rise = lost * (r_wall + r_conv)
+    coil_temp = AMBIENT + bag_rise + coil_rise
     print(f"   coil face {coil_area * 1e4:.1f} cm2, spreading x{SPREADING:.0f} "
           f"-> {coil_area * SPREADING * 1e4:.0f} cm2 effective")
     print(f"   wall {WALL_T_M * 1000:.0f} mm of k={WALL_K} foam: "
           f"{r_wall:.0f} K/W   +   surface: {r_conv:.0f} K/W")
-    print(f"   local rise at the cell: +{local_rise:.0f} K")
+    print(f"   coil face reaches ~{coil_temp:.0f} C")
+
+    # ⭐ AND THE CELL IS NO LONGER ON TOP OF IT. Every earlier run of this file
+    # printed a cell near 60 C, and that number rested on one sentence in the
+    # docstring: the Qi coil sits directly under the LiPo. It did — because the
+    # cell was a 148 mm semi-custom pouch drawn to fill the floor, and there was
+    # nowhere else for the coil to go. The cell is now a 53 mm catalogue part
+    # (Jauch LP523450JU) and dimensions.py puts the two SIDE BY SIDE.
+    #
+    # ⚠️ Which is worth computing rather than asserting. The heat now has to
+    # reach the cell along the base plate — 62 mm of the same foam, through a
+    # section the width of the cell — while an easier path to ambient sits right
+    # above the coil. Two resistances in a divider, and the divider is lopsided.
+    lateral_m = abs(dim.CELL_X - dim.QI_X) / 1000
+    lateral_area = (dim.INS_BASE_H / 1000) * (dim.CELL_W / 1000)
+    r_lateral = lateral_m / (WALL_K * lateral_area)
+    cell_area = (dim.CELL_L / 1000) * (dim.CELL_W / 1000)
+    r_cell_air = 1.0 / (h_still * cell_area * SPREADING)
+    coupling = r_cell_air / (r_lateral + r_cell_air)
+    cell_rise = coil_rise * coupling
+    cell_temp = AMBIENT + bag_rise + cell_rise
+    print()
+    print(f"   cell is {lateral_m * 1000:.0f} mm to one side: "
+          f"{r_lateral:.0f} K/W along the plate against {r_cell_air:.0f} K/W "
+          f"straight to air")
+    print(f"   so it takes {coupling * 100:.1f}% of the coil's rise: "
+          f"+{cell_rise:.2f} K")
     print(f"   cell temperature ~ {cell_temp:.0f} C against a "
           f"{CELL_LIMIT_C:.0f} C charging limit")
 
@@ -221,7 +247,36 @@ def main():
               "somebody")
         print("      has set it.")
     else:
-        print(f"   Cell stays at {cell_temp:.0f} C, inside its window.")
+        print(f"   ✅ THE CELL IS OUT OF IT: {cell_temp:.0f} C, well inside its "
+              "window, and")
+        print("      not because the analysis was wrong — because the geometry "
+              "changed.")
+        print("      Choosing a cell you can actually order made it 53 mm "
+              "instead of")
+        print("      148, which left room to put the coil BESIDE it instead of "
+              "under.")
+        print()
+        # ⛔ AND THE HEADLINE MOVES RATHER THAN DISAPPEARING. A watt still has
+        # nowhere to go; all that changed is what is sitting on top of it. The
+        # coil face is against microfibre, foam and then leather, and the number
+        # below is what a person would touch and what those materials have to
+        # survive for two hours at a time.
+        print(f"   ⚠️ THE COIL FACE IS STILL AT ~{coil_temp:.0f} C, and that is "
+              "now the finding.")
+        print("      Nothing there has a 45 C limit, but leather does age and a "
+              "bag is")
+        print("      a thing people hold. The interlock earns its place here "
+              "instead:")
+        headroom = 45.0 - AMBIENT
+        safe_lost = headroom / (r_wall + r_conv + 1 / (h_still * area))
+        safe_in = safe_lost / (1 - QI_EFFICIENCY)
+        print(f"      {safe_in:.1f} W in holds the coil face at 45 C, and "
+              f"{QI_INPUT_W:.0f} W is fine")
+        print("      with the bag open. firmware/sb_power.c already refuses to "
+              "charge")
+        print("      at full current with the bag shut — written for the cell, "
+              "kept for")
+        print("      the coil, and the number it uses comes from this line.")
 
 
 if __name__ == "__main__":

@@ -155,7 +155,7 @@ supposed to — and that is exactly what happened.
 | board | 196 × 20 mm strip, 0.6 mm rigid islands on 2-layer polyimide flex |
 | FSR matrix | 16 columns × 6 rows = 96 taxels, 22 lines on a 24-way FFC |
 | radar arrays | 2 × (2×4 patches), 2.5 mm pitch = λ₀/2 at 60 GHz |
-| battery | flat LiPo 2000 mAh + Qi coil under the power plate |
+| battery | **Jauch LP523450JU**, 950 mAh, 53 × 34.5 × 5.8 mm, with PCM and a 10 k NTC on its harness — beside the Qi coil, not on top of it |
 
 ## What the renders actually rejected
 
@@ -550,22 +550,36 @@ foam, which is to say an insulator, chosen for exactly the reason it is bad here
 |---|---|
 | wall, 3 mm of k = 0.05 | 11 K/W |
 | surface | 23 K/W |
-| **cell temperature** | **≈ 60 °C**, against a 45 °C charging limit |
+| **coil face** | **≈ 60 °C** |
+| **cell temperature** | **≈ 26 °C**, against a 45 °C charging limit |
 
-Two independent routes — a conduction path and a lumped convection area — land
-within a kelvin of each other, which is the only reason the number is worth
-quoting.
+⭐ **The cell got out of it by moving, not by being argued with.** Every earlier
+run of this model put the cell near 60 °C, and that number rested on one sentence:
+*the Qi coil sits directly under the LiPo*. It did — because the cell was a
+148 mm pouch drawn to fill the insert floor, and there was nowhere else for the
+coil to go. Choosing **a cell you can actually order** made it 53 mm, which left
+170 mm of floor free, so the two now sit **side by side**. The heat has to travel
+62 mm along foam to reach the cell — 4493 K/W against the 23 K/W it would take
+straight up to air — and takes **0.5%** of the coil's rise.
 
-⭐ **Inverting the model gives the fix rather than just the complaint:** 15 K of
-headroom less 5 K of margin allows 433 mW of loss, so **2.2 W in, not 5** — 2.3×
-slower, about five hours for a full charge. Cheaper still, and free: the firmware
-already knows when the bag is open, so charge only then.
+⚠️ **The finding moves rather than disappearing.** A watt still has nowhere to go;
+all that changed is what is sitting on top of it. The coil face is still at
+**≈ 60 °C**, against microfibre, foam and then leather, for two hours at a time.
+Nothing there has a 45 °C limit, but leather ages and a bag is a thing people
+hold — so the interlock keeps its place and changes its reason.
 
-✅ **Both are implemented now**, and the fix went further than the analysis asked.
-[`firmware/sb_power.c`](firmware/sb_power.c) holds the policy — full current only
-with the bag **open** and the cell between 10 and 40 °C, 2.2 W otherwise, and
-nothing at all if the thermistor reads open-circuit — under **264 host
-assertions**, including a sweep over every cell temperature with the bag shut.
+✅ **Implemented**, and the numbers are the cell's own rather than lithium's in
+general. [`firmware/sb_power.c`](firmware/sb_power.c) holds the policy — full
+current only with the bag **open** and the cell between **15 and 45 °C**, 2.9 W
+otherwise, 0.5 C between 45 and 55, and nothing at all if the thermistor reads
+open-circuit — under **276 host assertions**, including a sweep over every cell
+temperature with the bag shut.
+
+⛔ **Those thresholds were 10 and 40 until the cell was real.** Not wrong — a
+guess that happened to be conservative, which is not the same as being right.
+The LP523450JU datasheet states its own table (0.2 C from 0 to 15 °C, 1.0 C from
+15 to 45, 0.5 C from 45 to 55) and `tools/check.py` now asserts the firmware
+against it, so the two cannot drift apart again.
 
 ⛔ **And the thermistor moved off the board.** It was a 0402 NTC beside the PMIC,
 which measures the PMIC: the cell whose temperature the entire policy is about is
@@ -1098,7 +1112,7 @@ different lifetimes.
 | position map | goes stale with motion | re-measured at rest, with timestamp and a *stale* flag |
 
 Energy is not the constraint: a radar ping is ~3–5 µAh, so even 30
-re-mappings a day stay under 0.2 mAh out of a 2000 mAh cell. The cost is all in
+re-mappings a day stay under 0.2 mAh out of a 950 mAh cell. The cost is all in
 deciding **when** to look.
 
 ### Re-association is firmware, not physics

@@ -365,8 +365,38 @@ _area = _th.bag_surface_m2()
 _coil = 3.141592653589793 * _th.COIL_R_M ** 2
 _r = (_th.WALL_T_M / (_th.WALL_K * _coil * _th.SPREADING)
       + 1.0 / (8.0 * _coil * _th.SPREADING))
-_head = _th.CELL_LIMIT_C - _th.MARGIN_K - _th.AMBIENT
+# ⛔ THE HEADROOM IS THE COIL'S NOW, NOT THE CELL'S. While the coil sat directly
+# under the LiPo they were the same calculation: whatever the coil reached, the
+# cell reached. dimensions.py now puts them side by side, so the cell rides at
+# ambient and the thing with a temperature worth limiting is the coil face
+# against the leather — 45 °C, without the cell's 5 K design margin, because
+# nothing there is a cell.
+_head = _th.CELL_LIMIT_C - _th.AMBIENT
 _safe_w = (_head / (_r + 1 / (8.0 * _area))) / (1 - _th.QI_EFFICIENCY)
+
+# ⛔ AND THE BANDS COME FROM THE CELL, NOT FROM A MEMORY OF LITHIUM. They were
+# 0/10/40/45 — reasonable for a cell nobody had picked, and wrong by 5 K in both
+# directions once one was. The cell is Jauch LP523450JU and its datasheet states
+# its own table; this is the only place the two can be compared.
+sys.path.insert(0, os.path.join(ROOT, "hardware"))
+import bom as _bom                                                # noqa: E402
+
+_cell = _bom.BOM["BT1"]
+check("the JEITA bands are the cell's own",
+      (_cdef("SB_JEITA_COLD_C"), _cdef("SB_JEITA_COOL_C"),
+       _cdef("SB_CELL_LIMIT_C"), _cdef("SB_CELL_ABS_MAX_C"))
+      == _cell["charge_bands_c"],
+      f"firmware {(_cdef('SB_JEITA_COLD_C'), _cdef('SB_JEITA_COOL_C'), _cdef('SB_CELL_LIMIT_C'), _cdef('SB_CELL_ABS_MAX_C'))} "
+      f"vs datasheet {_cell['charge_bands_c']}")
+check("the charge currents are the cell's own",
+      (_cdef("SB_CELL_FULL_MA"), _cdef("SB_CELL_REDUCED_MA"),
+       _cdef("SB_CELL_CAPACITY_MAH"))
+      == (_cell["full_ma"], _cell["reduced_ma"], _cell["capacity_mah"]),
+      f"firmware {(_cdef('SB_CELL_FULL_MA'), _cdef('SB_CELL_REDUCED_MA'), _cdef('SB_CELL_CAPACITY_MAH'))} "
+      f"vs datasheet {(_cell['full_ma'], _cell['reduced_ma'], _cell['capacity_mah'])}")
+check("the full-current ceiling is 1.0 C, as the datasheet allows",
+      _cell["full_ma"] == _cell["capacity_mah"] * 1000 // 950,
+      f"{_cell['full_ma']} mA against {_cell['capacity_mah']} mAh")
 
 check("the firmware's cell ceiling matches thermal/budget.py",
       _cdef("SB_CELL_LIMIT_C") == int(_th.CELL_LIMIT_C),

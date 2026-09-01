@@ -461,9 +461,19 @@ J4_PINS = ([(1, "GND", PWR_IN, "GND")]
 # the cell whose temperature the entire charge policy is about. The nPM1300's
 # own words are "the battery thermistor"; every real lithium pack brings it out
 # on a third wire, and that is the only place it means anything.
+# ⛔ THE ORDER IS THE CELL'S, NOT MINE. This used to be +, NTC, −, which is the
+# order you would choose if you were drawing a connector rather than plugging one
+# in. The pack that is actually going to be bought — Jauch LP523450JU, whose
+# harness is moulded onto a JST PHR-3 — is wired Pin 1 red (+), Pin 2 black (−),
+# Pin 3 yellow (NTC). Plugging that into the old footprint puts the cell's
+# NEGATIVE on the PMIC's thermistor input and the thermistor on ground.
+#
+# ⚠️ Nothing in this repository could have caught that. Every check here asks
+# whether a net reaches the pins it should; none of them knew what colour wire
+# comes out of the pack, because until a real cell was chosen there was no pack.
 J2_PINS = [(1, "BAT+", PWR_OUT, "VBAT"),
-           (2, "NTC", PASSIVE, "NTC"),
-           (3, "BAT-", PWR_IN, "GND")]
+           (2, "BAT-", PWR_IN, "GND"),
+           (3, "NTC", PASSIVE, "NTC")]
 # ⚠️ NEITHER PIN IS GROUND. A receiver coil is a floating winding: both ends go
 # to the rectifier's AC inputs. The old version had one end on VQI and the other
 # on GND, which is a coil shorted to ground through half the rectifier.
@@ -524,8 +534,12 @@ PARTS = [
      "Hirose_FH12-12S-0.5SH_1x12-1MP_P0.50mm_Horizontal", J1_PINS, -46.0, 6.0),
     ("J4", "FFC FSR matrix, 24 way", "FFC_24", "Connector_FFC-FPC",
      "Hirose_FH12-24S-0.5SH_1x24-1MP_P0.50mm_Horizontal", J4_PINS, 34.0, -4.5),
-    ("J2", "LiPo 3.7V 2000mAh + NTC", "CONN3", "Connector_JST",
-     "JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal", J2_PINS, 20.0, 6.5),
+    # ⭐ PH, NOT SH — 2.0 mm pitch and 2 A a contact instead of 1. The note in
+    # bom.py had been saying so since the charge current was first written down;
+    # the real pack settles it, because that is the housing its harness comes
+    # with and an adapter between a battery and a charger is not a thing to build.
+    ("J2", "Jauch LP523450JU 950mAh", "CONN3", "Connector_JST",
+     "JST_PH_S3B-PH-K_1x03_P2.00mm_Horizontal", J2_PINS, 20.0, 6.5),
     ("J3", "Qi RX coil", "CONN2", "Connector_JST",
      "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", J3_PINS, 28.0, 6.5),
     ("J5", "SWD debug", "CONN4", "Connector_JST",
