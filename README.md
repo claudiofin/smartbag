@@ -23,7 +23,7 @@ been built.
 | | |
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
-| board | **111 footprints, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. **4 items of ~500 still need finishing by hand** — see [Routing](#routing). |
+| board | **111 footprints, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. **1 item of ~500 left** — see [Routing](#routing). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **23 of 23 agree** — see [The bill of materials](#the-bill-of-materials). |
 | firmware | the wake-up chain, the ledger, the taxel driver, the charge policy and the sensor bring-up — **378 assertions**, `-Werror`. ⭐ **And it builds for the nRF54L15**: [`firmware/target/`](firmware/target/) is a Zephyr app — nine HAL functions, the GATT service, the PMIC through Nordic's driver, a pin map **generated from the netlist** — at **173 KB of flash and 44 KB of RAM**, run by `tools/verify.sh`. ⚠️ Built, never run: nothing has met silicon. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
@@ -419,7 +419,7 @@ board and the tool reported the damage as its starting state.
 |---|---|
 | tracks / vias | **1713 / 393**, 4.3 m of copper |
 | DRC | **0 errors, 0 footprint errors**, schematic parity clean |
-| unconnected | **10 items of ~500** |
+| unconnected | **1 item of ~500** |
 | layers | F.Cu 724 · In2.Cu 919 · B.Cu 70 · **In1.Cu 0 — a solid ground reference** |
 
 ⛔ **Sixteen of those twenty were a pin assignment, not a routing problem.** The
@@ -457,7 +457,29 @@ honestly and stops.
 It closed `RADAR_IRQ_R`, the longest of them — 108 mm from U1 to U6, across both
 flex tails.
 
-⛔ **And it went back up to ten, for two reasons that are both improvements.**
+⭐ **Then a fanout took it to one.** Forty-eight pins escaping on a single layer
+was the bottleneck all along, and it stayed invisible because it never produced a
+wrong answer — only a router that gave up. U1 is a QFN48 on a 0.4 mm pitch with
+thirty-five signals to get out, and without a fanout every one of them travels on
+F.Cu until it finds room to drop, so the pins facing away from their destination
+cross the whole package on the most congested layer of the board.
+`qfn_fanout()` puts a via 0.35 mm outside each pin — what a person would draw,
+and the standard escape for a fine-pitch QFN. **10 → 1.**
+
+| | |
+|---|---|
+| wider flex tails (14 → 17 mm) | 10 → 10 |
+| ground vias on the radars' interior balls | 10 → 10 |
+| **a fanout via per QFN signal pin** | **10 → 4** |
+| **supply pins in the fanout too** | **4 → 1** |
+
+⚠️ The first two look like they did nothing and they were not wasted: the tails
+carry the SPI bus that the fanout then had somewhere to put, and the ground vias
+are an RF requirement rather than a routing one. What the table actually shows is
+that measuring one change at a time is the only way to find out which one was the
+constraint.
+
+⛔ **It had gone up to ten first, for two reasons that are both improvements.**
 Choosing a cell you can order brought a **JST PH** with it — nearly twice the SH's
 footprint area, in the part of the board the SPI bus to the right radar has to
 cross. And `via_in_pad()` stopped skipping ground: **fourteen of the A121's
@@ -467,9 +489,12 @@ a 60 GHz radar with the antenna inside the package that is not a cosmetic
 complaint. Twenty-eight more vias, in the tightest area of the board — and
 freerouting got worse at exactly the rate you would expect.
 
-⚠️ **The ten that are left** are `VDD_3V3` at U1 pin 10, the SPI bus and
-`RADAR_EN` to the right radar, `QI_RECT`, and four ground islands with nowhere to
-put a via. The two signals are genuinely
+⚠️ **The one that is left** is `VDD_3V3` at U1 pin 10. `maze.py` finds a route
+that closes it and lands 0.02 mm inside the Power class's 0.15 mm clearance, so
+DRC refuses it and so does this project: a rule relaxed to make a violation go
+away is not a rule. It is a few minutes for a person with KiCad's interactive
+router, which can push and shove neighbouring tracks — something a fixed-grid
+router cannot do. The two signals are genuinely
 sealed: a flood fill from U1 pin 10 reaches **79 cells** before it runs out of
 board. At a 0.4 mm pitch the gap between two adjacent pads is 0.2 mm, and a
 0.1 mm track with 0.1 mm either side needs 0.3 — so the escape has to go

@@ -121,6 +121,49 @@ def clearance_pairs(path):
     return out
 
 
+def drop_dangling(path):
+    """Delete fanout vias the router never used. Returns how many.
+
+    ⛔ A VIA THAT GOES NOWHERE IS A DRILL HIT SOMEBODY PAYS FOR. qfn_fanout()
+    puts one outside every signal pin of the dense packages so the router has
+    three layers to start on instead of one — which took the board from ten
+    unconnected pads to one — and the router does not need all of them. Nine
+    were left connected on a single layer, and a fabrication package that ships
+    them is asking for holes nothing uses.
+
+    ⚠️ Vias only. DRC also reports dangling TRACKS, and those are not the same
+    thing: a track stub is usually the near end of a connection that did not
+    finish, and deleting it removes the evidence of what is missing.
+    """
+    tmp = tempfile.NamedTemporaryFile(suffix=".rpt", delete=False).name
+    subprocess.run(["kicad-cli", "pcb", "drc", "--severity-all", "-o", tmp,
+                    path], capture_output=True)
+    text = open(tmp).read()
+    os.unlink(tmp)
+    pts = []
+    for block in text.split("[via_dangling]")[1:]:
+        m = re.search(r"@\((-?[\d.]+) mm, (-?[\d.]+) mm\)", block[:200])
+        if m:
+            pts.append((float(m.group(1)), float(m.group(2))))
+    if not pts:
+        return 0
+    board = pcbnew.LoadBoard(path)
+    doomed = []
+    for t in list(board.GetTracks()):
+        if t.Type() != pcbnew.PCB_VIA_T:
+            continue
+        p = t.GetPosition()
+        if any(abs(p.x / MM - x) < 0.02 and abs(p.y / MM - y) < 0.02
+               for x, y in pts):
+            doomed.append(t)
+    for t in doomed:
+        board.Remove(t)
+    if doomed:
+        pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+        board.Save(path)
+    return len(doomed)
+
+
 def rip_offenders(path):
     """Delete the shorter track of each clearance pair. Returns how many.
 
@@ -170,6 +213,70 @@ def rip_offenders(path):
         pcbnew.ZONE_FILLER(board).Fill(board.Zones())
         board.Save(path)
     return len(doomed)
+
+
+def direct_join(path, a, b, netname, base_v, base_u):
+    """Try the simplest thing first: a straight track between the two points.
+
+    ⛔ THE MAZE ROUTER WAS FAILING ON GAPS A CHILD COULD DRAW. Two VREF fragments
+    0.83 mm apart on the same layer, and A* produced a route that came back
+    DRC-clean and still unconnected — seven times, on seven different nets. A
+    hand-placed straight segment between the two reported points closed it
+    immediately and cost nothing.
+    ⭐ So the order is: try the line, then try the maze. The expensive machine
+    exists for the 108 mm case that has to go around three components; asking it
+    to solve a 0.8 mm gap was always going to be the part where its assumptions
+    about anchors and layers earned nothing.
+
+    ⚠️ Different layers get a via at the far end. Two fragments of one net that
+    ended up on F and B are a layer change the router did not finish, and that is
+    what a via is.
+    """
+    board = pcbnew.LoadBoard(path)
+    net = board.GetNetcodeFromNetname(netname)
+    if net == 0:
+        return False
+    layers = {}
+    for t in list(board.GetTracks()):
+        if t.GetNetCode() != net or t.Type() == pcbnew.PCB_VIA_T:
+            continue
+        for e in (t.GetStart(), t.GetEnd()):
+            for pt in (a, b):
+                if abs(e.x / MM - pt[0]) < 0.02 and abs(e.y / MM - pt[1]) < 0.02:
+                    layers[pt] = t.GetLayer()
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetCode() != net:
+                continue
+            p = pad.GetPosition()
+            for pt in (a, b):
+                if abs(p.x / MM - pt[0]) < 0.05 and abs(p.y / MM - pt[1]) < 0.05:
+                    layers.setdefault(pt, pcbnew.F_Cu)
+
+    la = layers.get(a, pcbnew.F_Cu)
+    lb = layers.get(b, pcbnew.F_Cu)
+    added = []
+    if la != lb:
+        v = pcbnew.PCB_VIA(board)
+        v.SetPosition(pcbnew.VECTOR2I(int(b[0] * MM), int(b[1] * MM)))
+        v.SetWidth(int(VIA_D * MM))
+        v.SetDrill(int(VIA_DRILL * MM))
+        v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
+        v.SetNetCode(net)
+        board.Add(v)
+        added.append(v)
+    t = pcbnew.PCB_TRACK(board)
+    t.SetStart(pcbnew.VECTOR2I(int(a[0] * MM), int(a[1] * MM)))
+    t.SetEnd(pcbnew.VECTOR2I(int(b[0] * MM), int(b[1] * MM)))
+    t.SetWidth(int(TRACK_W * MM))
+    t.SetLayer(la)
+    t.SetNetCode(net)
+    board.Add(t)
+    added.append(t)
+    pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+    board.Save(path)
+    v2, u2, _ = drc(path)
+    return u2 < base_u and v2 <= base_v
 
 
 # ── the board, as three bitmaps ──────────────────────────────────────────────
@@ -607,6 +714,16 @@ def _pass(path):
             continue
         x0, x1 = sorted((a[0], b[0]))
         y0, y1 = sorted((a[1], b[1]))
+        # ⭐ The straight line first, and only then the maze.
+        if direct_join(path, a, b, netname, base_v, base_u):
+            _v, base_u, _p = drc(path)
+            print(f"  {netname}: joined with a straight line "
+                  f"({base_u} unconnected left)")
+            joined += 1
+            shutil.copy(path, pristine)
+            continue
+        shutil.copy(pristine, path)
+
         tw, cl = rules_for(os.path.splitext(path)[0] + ".kicad_pro", netname)
         # ⭐ NECK DOWN AT THE PAD IF THE CLASS WIDTH WILL NOT FIT. A 0.30 mm
         # supply track needs a 0.60 mm channel to leave a 0.40 mm pitch QFN, and
@@ -649,8 +766,19 @@ def _pass(path):
         pcbnew.ZONE_FILLER(board).Fill(board.Zones())
         board.Save(path)
         kinds = {}
-        v, u, _ = drc(path, kinds=kinds)
-        if u < base_u and v <= base_v:
+        v, u, still = drc(path, kinds=kinds)
+        # ⛔ "FEWER UNCONNECTED" IS THE WRONG TEST ON A BOARD WITH SEVERAL GAPS.
+        # Closing one can reveal the next: KiCad reports one ratsnest line per
+        # net, so joining two fragments of a net that is broken in two places
+        # leaves the count exactly where it was, and a route that was correct and
+        # DRC-clean got thrown away seven times in a row for it.
+        #
+        # ⭐ The honest question is whether THIS pair is gone. It is asked
+        # directly, and the count is still not allowed to rise.
+        closed = not any(abs(pa[0] - a[0]) < 0.01 and abs(pa[1] - a[1]) < 0.01
+                         and abs(pb[0] - b[0]) < 0.01 and abs(pb[1] - b[1]) < 0.01
+                         for pa, pb, _n in still)
+        if closed and u <= base_u and v <= base_v:
             print(f"  {netname}: joined "
                   f"({len(simplify(found))} segments, {u} unconnected left)")
             base_u, base_v = u, v
@@ -670,5 +798,7 @@ def _pass(path):
 if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "--rip":
         print(rip_offenders(sys.argv[2]))
+    elif len(sys.argv) > 2 and sys.argv[1] == "--tidy":
+        print(drop_dangling(sys.argv[2]))
     else:
         main(sys.argv[1])

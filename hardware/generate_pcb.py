@@ -15,6 +15,7 @@ reproducible.
 Usage:  python3 hardware/generate_pcb.py
 """
 import os
+import math
 import re
 import sys
 import uuid as _uuid
@@ -600,6 +601,74 @@ STITCH_ROWS = [
 ]
 
 
+def qfn_fanout(net_index, settled, refs=("U1", "U3", "U7")):
+    """A via just outside every signal pin of the dense QFNs, before routing.
+
+    ⛔ FORTY-EIGHT PINS ESCAPING ON ONE LAYER IS THE BOTTLENECK, and it stayed
+    invisible because it never produced a wrong answer — only a router that gave
+    up. U1 is a QFN48 on a 0.4 mm pitch with thirty-five signals to get out, and
+    without a fanout every one of them has to travel on F.Cu until it finds room
+    to drop; the pins on the side facing away from their destination therefore
+    cross the whole package on the most congested layer of the board. Widening
+    the flex tails and grounding the radars' interior balls both helped and
+    neither moved the number much, which is what says the bottleneck is here.
+
+    ⭐ A VIA A THIRD OF A MILLIMETRE OUTSIDE THE PAD is what a person would draw,
+    and it is the standard escape for a fine-pitch QFN: the signal leaves the
+    package on the surface for 0.35 mm, drops to an inner layer and travels
+    there. It costs one via per signal and gives the router three layers to
+    start on instead of one.
+
+    ⚠️ Outward along the pad's own normal, so a via never lands between two pins:
+    which side of the package a pad is on decides the direction, and the
+    footprint's own pad positions decide which side it is on.
+    """
+    out = []
+    for ref in refs:
+        px, py = settled[ref]
+        text = open(footprint_path(*_fp_of(ref))).read()
+        rot = math.radians(nl.ROTATION.get(ref, 0))
+        cos_t, sin_t = math.cos(rot), math.sin(rot)
+        pads = re.findall(
+            r'\(pad "(\d+)"[^\n]*\n\s*\(at ([-\d.]+) ([-\d.]+)', text)
+        if not pads:
+            continue
+        nets = nl.pad_nets(ref)
+        xs = [float(a) for _n, a, _b in pads]
+        ys = [float(b) for _n, _a, b in pads]
+        hw, hh = (max(xs) - min(xs)) / 2, (max(ys) - min(ys)) / 2
+        for num, ax, ay in pads:
+            net = nets.get(num)
+            # ⛔ SUPPLY PINS NEED AN ESCAPE TOO, and excluding them cost the
+            # last two unconnected pads on the board: U1's pins 10 and 22 are
+            # VDD_3V3 and they were left to find their own way out of a 0.4 mm
+            # pitch package on the one layer everything else was already using.
+            # A power pin is not special here — it is a pin, in a row of pins.
+            # ⚠️ GROUND still is: a ground pin under a QFN's exposed pad reaches
+            # the plane through the pad's own thermal vias, which the footprint
+            # already has.
+            if net in (None, "GND", "") or net in nl.SINGLE_PIN_NETS:
+                continue
+            ax, ay = float(ax), float(ay)
+            # Which edge is this pad on? The larger normalised coordinate wins.
+            if abs(ax) / max(hw, 1e-6) >= abs(ay) / max(hh, 1e-6):
+                dx, dy = (0.35 if ax > 0 else -0.35), 0.0
+            else:
+                dx, dy = 0.0, (0.35 if ay > 0 else -0.35)
+            bx, by = ax + dx, ay + dy
+            rx = bx * cos_t + by * sin_t
+            ry = -bx * sin_t + by * cos_t
+            out.append(via(px + rx, py + ry, net_index[net], size=0.25, drill=0.1))
+    return out
+
+
+def _fp_of(ref):
+    for r, _v, _s, lib, fp, _p, _x, _y in nl.PARTS:
+        if r == ref:
+            return lib, fp
+    raise KeyError(ref)
+
+
 def route(net_index, settled):
     """Ground stitching plus the signal routing from route.py."""
     out = []
@@ -733,6 +802,7 @@ def build():
     # object producing more than half the errors on the board. Tracks that are
     # not connectivity have no business in a board file.
     r += via_in_pad(NET_INDEX, settled)
+    r += qfn_fanout(NET_INDEX, settled)
     r += route(NET_INDEX, settled)
 
     # ── Silkscreen ───────────────────────────────────────────────────────
@@ -742,19 +812,27 @@ def build():
     r.append(text("flex", -70.0, -1.4, "F.SilkS", 0.8, 0.12))
     r.append(text("flex", 60.0, -1.4, "F.SilkS", 0.8, 0.12))
 
-    r.append(text("SMARTBAG CORE  v0.2", 22.0, -6.0, "B.SilkS", 1.6, 0.24))
-    r.append(text("tagless inventory - 2L rigid-flex", 22.0, -3.4, "B.SilkS", 1.0, 0.16))
+    # ⛔ THE BACK SILKSCREEN WAS THREE CLAIMS OUT OF DATE AND ON TOP OF A
+    # CONNECTOR. It said "SoC+NPU" — the NPU went when the parts search found no
+    # Bluetooth SoC in a QFN that had one — and "2L rigid-flex", which has been
+    # four layers since In1 became a ground reference. Silkscreen is the one
+    # place a design's claims are printed on the object itself, where nobody
+    # regenerates them.
+    # ⚠️ And it ran across J2's through-hole pads, which is ink where solder
+    # goes. J2 moved to the cell's side of the board; the text did not follow.
+    r.append(text("SMARTBAG CORE  v0.3", 22.0, -6.0, "B.SilkS", 1.6, 0.24))
+    r.append(text("tagless inventory - 4L rigid-flex", 22.0, -3.4, "B.SilkS", 1.0, 0.16))
     for i, s_ in enumerate([
-        "U1 SoC+NPU   U2 60 GHz radar   U3 PMIC",
-        "U4 6-axis IMU   U5 zip Hall   Y1 32 MHz",
-        "U2/U6 A121: 60 GHz radar, antenna in package",
+        "U1 nRF54L15   U2/U6 A121 60 GHz   U3 nPM1300",
+        "U4 BMI270 IMU   U5 zip Hall   U11 BQ51013B Qi",
+        "A121: antenna in package, no 60 GHz copper here",
     ]):
-        r.append(text(s_, 22.0, -0.6 + i * 1.9, "B.SilkS", 0.9, 0.14))
+        r.append(text(s_, 30.0, 4.4 + i * 1.9, "B.SilkS", 0.9, 0.14))
 
     # Design notes: comments layer, these never go to fabrication.
     for i, s_ in enumerate([
-        "rigid FR4 islands 0.6 mm on 2L polyimide flex",
-        "8 mm flex tails: min bend radius 12 mm (10x thickness)",
+        "rigid FR4 islands 0.6 mm on 2L polyimide flex, 4 copper layers",
+        "17 mm flex tails: min bend radius 2 mm (10x thickness)",
         "J4: 16 cols + 6 rows = 22 lines on a 24-way FFC",
         "U2/U6 need solid ground under the whole package (A121 ds 5.4)",
         "no 60 GHz copper on this board: the antennas are inside the A121",

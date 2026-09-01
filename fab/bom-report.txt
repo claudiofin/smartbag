@@ -17,7 +17,7 @@ BOM vs footprints — measured, not asserted
   ok Y3   ABM8-24.000MHZ-B2-T    SMD-2016-4 datasheet   4 pins / 2.0x1.6 mm   footprint   4 pins /   3.0x2.6 mm   [pdf not archived]
   ok J1   FH12-12S-0.5SH(55)     FH12-12S   datasheet  12 pins / 10.4x4.3 mm   footprint  12 pins /  12.1x7.9 mm   [pdf not archived]
   ok J4   FH12-24S-0.5SH(55)     FH12-24S   datasheet  24 pins / 16.4x4.3 mm   footprint  24 pins /  18.1x7.9 mm   [pdf not archived]
-  ok J2   SM03B-SRSS-TB(LF)(SN)  JST-SH-03  datasheet   3 pins / 5.25x2.9 mm   footprint   3 pins /   6.8x6.6 mm   [pdf not archived]
+  ok J2   S3B-PH-K-S(LF)(SN)     JST-PH-03  datasheet   3 pins / 7.9x4.5 mm   footprint   3 pins /   8.9x8.6 mm   [pdf not archived]
   ok J3   SM02B-SRSS-TB(LF)(SN)  JST-SH-02  datasheet   2 pins / 4.25x2.9 mm   footprint   2 pins /   5.8x6.6 mm   [pdf not archived]
   ok J5   SM04B-SRSS-TB(LF)(SN)  JST-SH-04  datasheet   4 pins / 6.25x2.9 mm   footprint   4 pins /   7.8x6.6 mm   [pdf not archived]
   ok AE1  2450AT43F0100E         SMD chip   datasheet   2 pins / 6.0x2.0 mm   footprint   2 pins /   7.4x2.7 mm   [pdf not archived]

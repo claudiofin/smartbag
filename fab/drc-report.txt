@@ -1,8 +1,11 @@
 ** Drc report for smartbag_core.kicad_pcb **
-** Created on 2026-08-31T21:17:54 **
+** Created on 2026-09-01T16:55:26 **
 ** Report includes: Errors, Warnings, Exclusions **
 
-** Found 2 DRC violations **
+** Found 3 DRC violations **
+[track_dangling]: Track has unconnected end
+    Local override; warning
+    @(186.3370 mm, 151.2721 mm): Track [VDD_3V3] on In2.Cu, length 2.0721 mm
 [lib_footprint_mismatch]: Footprint 'Acconeer_A121_fcCSP50' does not match copy in library 'SmartBag'
     Local override; warning
     @(119.0000 mm, 148.0000 mm): Footprint U2
@@ -10,23 +13,11 @@
     Local override; warning
     @(301.0000 mm, 148.0000 mm): Footprint U6
 
-** Found 4 unconnected pads **
+** Found 1 unconnected pads **
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(190.2266 mm, 146.6295 mm): Track [VDD_3V3] on In2.Cu, length 1.6775 mm
-    @(191.0500 mm, 149.4000 mm): Pad 10 [VDD_3V3] of U1 on F.Cu
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(112.0000 mm, 138.0000 mm): Zone 'GND_top' [GND] on F.Cu, priority 0
-    @(112.0000 mm, 138.0000 mm): Zone 'GND_top' [GND] on F.Cu, priority 0
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(193.4801 mm, 151.2675 mm): Track [RADAR_EN] on In2.Cu, length 0.4326 mm
-    @(118.7500 mm, 150.2500 mm): Pad F10 [RADAR_EN] of U2 on F.Cu
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(194.6000 mm, 150.9500 mm): Pad 20 [RADAR_IRQ_R] of U1 on F.Cu
-    @(303.2500 mm, 146.7500 mm): Pad K8 [RADAR_IRQ_R] of U6 on F.Cu
+    @(192.2000 mm, 145.0500 mm): Track [VDD_3V3] on F.Cu, length 0.4000 mm
+    @(190.7000 mm, 149.4000 mm): Track [VDD_3V3] on F.Cu, length 0.3500 mm
 
 ** Found 0 Footprint errors **
 

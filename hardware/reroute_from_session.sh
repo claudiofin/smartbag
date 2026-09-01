@@ -27,3 +27,8 @@ python3 hardware/generate_pcb.py | tail -1
 # It is deterministic (A* over a fixed grid, no randomness), so re-running it
 # here reproduces exactly the same two routes.
 "$KPY" hardware/maze.py hardware/smartbag_core.kicad_pcb | tail -1
+# ⛔ And take the unused fanout vias back out. qfn_fanout() offers one per signal
+# pin so the router has somewhere to go; what it does not take is a drill hit
+# nobody pays for on purpose.
+echo "  $("$KPY" hardware/maze.py --tidy hardware/smartbag_core.kicad_pcb \
+  2>/dev/null | tail -1) dangling fanout vias removed"
