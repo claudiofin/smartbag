@@ -539,7 +539,12 @@ PARTS = [
     # the real pack settles it, because that is the housing its harness comes
     # with and an adapter between a battery and a charger is not a thing to build.
     ("J2", "Jauch LP523450JU 950mAh", "CONN3", "Connector_JST",
-     "JST_PH_S3B-PH-K_1x03_P2.00mm_Horizontal", J2_PINS, 20.0, 6.5),
+     # ⭐ AND IT MOVED TO THE CELL'S SIDE. dimensions.py puts the pouch at
+     # x = −62 on the insert floor, so a battery connector at +20 was asking the
+     # harness to cross the whole insert — and putting a footprint nearly twice
+     # the SH's area into the one part of the board the SPI bus to the right
+     # radar has to get through. Both reasons point the same way.
+     "JST_PH_S3B-PH-K_1x03_P2.00mm_Horizontal", J2_PINS, -44.0, 6.5),
     ("J3", "Qi RX coil", "CONN2", "Connector_JST",
      "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", J3_PINS, 28.0, 6.5),
     ("J5", "SWD debug", "CONN4", "Connector_JST",

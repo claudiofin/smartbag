@@ -419,7 +419,7 @@ board and the tool reported the damage as its starting state.
 |---|---|
 | tracks / vias | **1713 / 393**, 4.3 m of copper |
 | DRC | **0 errors, 0 footprint errors**, schematic parity clean |
-| unconnected | **3 items of ~500** |
+| unconnected | **10 items of ~500** |
 | layers | F.Cu 724 · In2.Cu 919 · B.Cu 70 · **In1.Cu 0 — a solid ground reference** |
 
 ⛔ **Sixteen of those twenty were a pin assignment, not a routing problem.** The
@@ -457,8 +457,19 @@ honestly and stops.
 It closed `RADAR_IRQ_R`, the longest of them — 108 mm from U1 to U6, across both
 flex tails.
 
-⚠️ **The three that are left** are `VDD_3V3` at U1 pin 10, `RADAR_EN` at U2, and
-one ground island with nowhere to put a via. The two signals are genuinely
+⛔ **And it went back up to ten, for two reasons that are both improvements.**
+Choosing a cell you can order brought a **JST PH** with it — nearly twice the SH's
+footprint area, in the part of the board the SPI bus to the right radar has to
+cross. And `via_in_pad()` stopped skipping ground: **fourteen of the A121's
+interior balls are ground and not one of them had a via**, so the die's ground was
+tied to the plane by whatever copper squeezed between balls on a 0.5 mm pitch. On
+a 60 GHz radar with the antenna inside the package that is not a cosmetic
+complaint. Twenty-eight more vias, in the tightest area of the board — and
+freerouting got worse at exactly the rate you would expect.
+
+⚠️ **The ten that are left** are `VDD_3V3` at U1 pin 10, the SPI bus and
+`RADAR_EN` to the right radar, `QI_RECT`, and four ground islands with nowhere to
+put a via. The two signals are genuinely
 sealed: a flood fill from U1 pin 10 reaches **79 cells** before it runs out of
 board. At a 0.4 mm pitch the gap between two adjacent pads is 0.2 mm, and a
 0.1 mm track with 0.1 mm either side needs 0.3 — so the escape has to go

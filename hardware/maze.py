@@ -87,20 +87,37 @@ def drc(path, report=None, kinds=None):
     return v, u, pairs
 
 
+# ⛔ A SHORT IS A CLEARANCE VIOLATION THAT WENT ALL THE WAY. freerouting laid
+# QI_ILIM across VDD_3V3 on an inner layer and DRC called it shorting_items
+# rather than clearance — a different word for the same pair of tracks in the
+# same place, and the repair is identical. Leaving shorts out of this list meant
+# the one violation that can destroy a board was the one nothing acted on.
+OFFENCES = ("[clearance]", "[shorting_items]")
+
+
 def clearance_pairs(path):
-    """[(x, y, netname, length_mm)] for every item in a clearance violation."""
+    """[(x, y, netname, length_mm)] for every item in a clearance or short."""
     tmp = tempfile.NamedTemporaryFile(suffix=".rpt", delete=False).name
     subprocess.run(["kicad-cli", "pcb", "drc", "--schematic-parity",
                     "--severity-error", "-o", tmp, path], capture_output=True)
     text = open(tmp).read()
     os.unlink(tmp)
     out = []
-    for block in text.split("[clearance]")[1:]:
+    blocks = []
+    for kind in OFFENCES:
+        blocks += text.split(kind)[1:]
+    for block in blocks:
+        # ⚠️ Vias offend too, and the first version of this pattern only read
+        # tracks — so a QI_ILIM via sitting 0.0016 mm from a VDD_3V3 track was a
+        # violation nothing could act on, and the tool kept reporting "0 ripped"
+        # against a DRC report it had just read. A via is given length 0 so that
+        # when it is paired with a track the via is always the one removed: a
+        # layer change is cheap to redo, four millimetres of routed track is not.
         for m in re.finditer(
-                r"@\((-?[\d.]+) mm, (-?[\d.]+) mm\): Track \[([^\]]*)\][^\n]*"
-                r"length ([\d.]+) mm", block[:400]):
-            out.append((float(m.group(1)), float(m.group(2)),
-                        m.group(3), float(m.group(4))))
+                r"@\((-?[\d.]+) mm, (-?[\d.]+) mm\): (Track|Via) \[([^\]]*)\]"
+                r"[^\n]*?(?:length ([\d.]+) mm)?$", block[:400], re.M):
+            out.append((float(m.group(1)), float(m.group(2)), m.group(4),
+                        float(m.group(5)) if m.group(5) else 0.0))
     return out
 
 
@@ -128,13 +145,25 @@ def rip_offenders(path):
         a, b = pairs[i], pairs[i + 1]
         v = a if a[3] <= b[3] else b
         victims[(round(v[0], 4), round(v[1], 4))] = v[2]
+    # ⚠️ MATCH BY NET AND NEARNESS, NOT BY EXACT START POINT. DRC reports a point
+    # ON the offending track, which is its start only sometimes; keying on the
+    # start meant the tool reported "0 ripped" while the violation it had just
+    # read was still there. Anything of the right net with an end within a tenth
+    # of a millimetre of the reported point is the track that was meant.
     doomed = []
-    for t in board.GetTracks():
-        if t.Type() == pcbnew.PCB_VIA_T:
-            continue
-        key = (round(t.GetStart().x / MM, 4), round(t.GetStart().y / MM, 4))
-        if key in victims and t.GetNetname() == victims[key]:
-            doomed.append(t)
+    for t in list(board.GetTracks()):
+        for (vx, vy), net in victims.items():
+            if t.GetNetname() != net:
+                continue
+            ends = ((t.GetPosition(),) if t.Type() == pcbnew.PCB_VIA_T
+                    else (t.GetStart(), t.GetEnd()))
+            for e in ends:
+                if abs(e.x / MM - vx) < 0.1 and abs(e.y / MM - vy) < 0.1:
+                    doomed.append(t)
+                    break
+            else:
+                continue
+            break
     for t in doomed:
         board.Remove(t)
     if doomed:

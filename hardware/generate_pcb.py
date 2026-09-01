@@ -536,8 +536,18 @@ def via_in_pad(net_index, settled):
     ⭐ This is the claim an earlier version of this project made about the QFN,
     where it was false: a QFN has one perimeter row and every pin escapes
     outwards. On a BGA it is true, and only for the balls that are actually
-    surrounded. Twenty-three of the A121's fifty balls carry signals and only
-    four of those are interior, so four vias per sensor is the whole cost.
+    surrounded.
+
+    ⛔ AND IT IS TRUE OF THE GROUND BALLS TOO, which this used to skip. The
+    reasoning for skipping them was that ground reaches the pour — but an
+    interior ball cannot reach the pour for exactly the reason stated above, and
+    it does not become able to because of what it is called. Fourteen of the
+    A121's interior balls are ground and not one of them had a via: the die's
+    ground was tied to the plane only by whatever copper squeezed between balls
+    on a 0.5 mm pitch. On a 60 GHz radar with the antenna inside the package,
+    that is not a cosmetic complaint. Eighteen vias per sensor now, not four,
+    and the fourteen extra cost nothing to route because they all go to the
+    same plane.
 
     ⚠️ Via-in-pad has to be FILLED AND CAPPED at fabrication or the paste drains
     into the hole and the joint starves. tools/fab_notes.py says so.
@@ -559,7 +569,7 @@ def via_in_pad(net_index, settled):
         for ball, name in gf.A121_BALLS.items():
             row, col = gf.A121_ROWS.index(ball[0]), int(ball[1:])
             interior = 0 < row < len(gf.A121_ROWS) - 1 and 1 < col < 10
-            if not interior or name == "GND":
+            if not interior:
                 continue
             bx, by = gf.a121_position(ball)
             rx = bx * cos_t + by * sin_t
