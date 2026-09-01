@@ -2,7 +2,8 @@
 # compiler can actually check, so it may as well be strict.
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -O2
 
-BINS = test_smartbag test_sb_fsr test_sb_ble test_sb_power test_sb_sensors
+BINS = test_smartbag test_sb_fsr test_sb_ble test_sb_power test_sb_sensors \
+       test_sb_sense test_sb_camera
 
 test: $(BINS)
 	./test_smartbag
@@ -10,6 +11,8 @@ test: $(BINS)
 	./test_sb_ble
 	./test_sb_power
 	./test_sb_sensors
+	./test_sb_sense
+	./test_sb_camera
 
 test_smartbag: test_smartbag.c smartbag.c smartbag.h
 	$(CC) $(CFLAGS) -o $@ test_smartbag.c smartbag.c
@@ -41,3 +44,12 @@ clean:
 	rm -f $(BINS) gen_vectors
 
 .PHONY: test clean vectors
+
+# ⭐ The loop that reads the bag. It links sb_fsr.c and sb_sensors.c because it
+# drives them; nothing here is mocked except the silicon underneath the HAL.
+test_sb_sense: test_sb_sense.c sb_sense.c sb_sensors.c sb_fsr.c sb_camera.c sb_sense.h
+	$(CC) $(CFLAGS) -o $@ test_sb_sense.c sb_sense.c sb_sensors.c sb_fsr.c sb_camera.c -lm
+
+# ⭐ The one part that is bought whole, driven by its own two documents.
+test_sb_camera: test_sb_camera.c sb_camera.c sb_camera.h
+	$(CC) $(CFLAGS) -o $@ test_sb_camera.c sb_camera.c

@@ -8,12 +8,12 @@
  * how firmware/test_sb_fsr.c already solves a resistive network instead of
  * mocking one.
  *
- * ⭐ WHAT THE PLATFORM OWES, AND NOTHING MORE. Nine functions. The nRF54L15's
+ * ⭐ WHAT THE PLATFORM OWES, AND NOTHING MORE. Ten functions. The nRF54L15's
  * SPIM, TWIM, SAADC, GPIOTE and RTC drivers go behind them, and none of that
  * appears in any file this project tests.
  *
  * ⚠️ THIS IS THE HONEST SIZE OF THE REMAINING SILICON WORK. Not "no drivers" —
- * these nine, plus a vendor BLE stack bound to sb_ble.c's buffers. Everything
+ * these ten, plus a vendor BLE stack bound to sb_ble.c's buffers. Everything
  * above them is written and tested.
  */
 #ifndef SB_HAL_H
@@ -46,6 +46,20 @@ typedef struct {
      * and not a separate call. */
     bool (*spi_xfer)(void *ctx, sb_cs cs, const uint8_t *tx, uint8_t *rx,
                      size_t len);
+
+    /* ⛔ AND A SECOND ONE, BECAUSE A BURST READ IS NOT A TRANSFER. The camera
+     * hands over a frame as a short command followed by kilobytes of data under
+     * a single chip select — Arducam's application note calls it burst read
+     * timing — and spi_xfer's one length cannot say that without a transmit
+     * buffer as large as the frame. 18 kB of zeros to clock out 18 kB of pixels
+     * is 7% of the nRF54L15's RAM spent saying nothing.
+     *
+     * cmd_len bytes go out with whatever comes back discarded, then rx_len
+     * bytes are clocked in with zeros on MOSI, all inside one assertion. That
+     * is two descriptors to nrfx_spim and two spi_buf entries to Zephyr, which
+     * is how every SPI peripheral already works. */
+    bool (*spi_burst_read)(void *ctx, sb_cs cs, const uint8_t *cmd,
+                           size_t cmd_len, uint8_t *rx, size_t rx_len);
 
     /* ── I2C, shared by the IMU, the PMIC and the time-of-flight sensor ──── */
     bool (*i2c_write)(void *ctx, uint8_t addr, const uint8_t *buf, size_t len);

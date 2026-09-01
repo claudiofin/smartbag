@@ -103,6 +103,37 @@ static bool hal_spi_xfer(void *ctx, sb_cs cs, const uint8_t *tx, uint8_t *rx,
     return err == 0;
 }
 
+/* ⭐ ONE ASSERTION, TWO PHASES. Zephyr's spi_buf_set is a list, so a command
+ * phase and a data phase of different lengths is what the API was built for:
+ * the transmit set holds the command, the receive set skips those bytes and
+ * then fills the frame buffer. The chip select is held across both because it
+ * is a GPIO this file owns rather than the controller's own. */
+static bool hal_spi_burst_read(void *ctx, sb_cs cs, const uint8_t *cmd,
+                               size_t cmd_len, uint8_t *rx, size_t rx_len)
+{
+    ARG_UNUSED(ctx);
+    if (cs >= SB_CS_COUNT || !device_is_ready(spi_bus) || !rx) {
+        return false;
+    }
+    const struct spi_buf tx_bufs[] = { { .buf = (void *)cmd, .len = cmd_len } };
+    const struct spi_buf rx_bufs[] = {
+        { .buf = NULL, .len = cmd_len },        /* discard the command phase */
+        { .buf = rx,   .len = rx_len },
+    };
+    const struct spi_buf_set tx_set = { .buffers = tx_bufs, .count = 1 };
+    const struct spi_buf_set rx_set = { .buffers = rx_bufs, .count = 2 };
+
+    const uint8_t port = sb_cs_pins[cs].port, pin = sb_cs_pins[cs].pin;
+    gpio_pin_set_raw(ports[port], pin, 0);
+    int err = spi_transceive(spi_bus, &spi_cfg, cmd_len ? &tx_set : NULL,
+                             &rx_set);
+    gpio_pin_set_raw(ports[port], pin, 1);
+    if (err) {
+        LOG_WRN("spi burst cs=%d len=%u err=%d", (int)cs, (unsigned)rx_len, err);
+    }
+    return err == 0;
+}
+
 /* ── I2C ─────────────────────────────────────────────────────────────────── */
 static bool hal_i2c_write(void *ctx, uint8_t addr, const uint8_t *buf,
                           size_t len)
@@ -228,6 +259,7 @@ int sb_hal_zephyr_init(sb_hal *hal)
         .now_ms = hal_now_ms,
         .delay_us = hal_delay_us,
         .spi_xfer = hal_spi_xfer,
+        .spi_burst_read = hal_spi_burst_read,
         .i2c_write = hal_i2c_write,
         .i2c_read = hal_i2c_read,
         .gpio_set = hal_gpio_set,

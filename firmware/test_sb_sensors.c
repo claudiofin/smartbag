@@ -127,7 +127,7 @@ static uint16_t f_adc(void *c, uint8_t ch) { (void)c; (void)ch; return 0; }
 
 static sb_hal make(fake *f)
 {
-    sb_hal h = {f_now, f_delay, f_spi, f_i2c_w, f_i2c_r, f_set, f_get,
+    sb_hal h = {f_now, f_delay, f_spi, NULL, f_i2c_w, f_i2c_r, f_set, f_get,
                 f_mux, f_adc, f};
     return h;
 }

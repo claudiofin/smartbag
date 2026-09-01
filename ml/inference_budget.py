@@ -38,9 +38,15 @@ MAC_PER_CYCLE = (1.0, 2.0)             # pessimistic, optimistic
 INPUT = 96                             # classify.py trains on 96x96 grey
 
 # ── the camera, from hardware/bom.py's chosen part ───────────────────────────
+# ⛔ THE MODULE CANNOT SEND GREY, AND THIS FILE USED TO ASSUME IT COULD. Register
+# 0x20 of the Arducam Mega offers JPEG, RGB and YUV — Table 1 of its application
+# note — so a 96x96 frame is 18432 bytes on the wire and not 9216, and the luma
+# the model eats is made on the processor afterwards (firmware/sb_camera.c,
+# sb_cam_rgb565_to_grey). The old line charged the burst at one byte a pixel and
+# was wrong by exactly a factor of two.
 CAM_SPI_MHZ = 8.0                      # Arducam Mega maximum, and it is a wall
 CAM_MODES = [
-    ("96x96 grey", 96 * 96 * 1),
+    ("96x96 RGB565", 96 * 96 * 2),
     ("160x120 RGB565", 160 * 120 * 2),
     ("320x240 RGB565", 320 * 240 * 2),
 ]

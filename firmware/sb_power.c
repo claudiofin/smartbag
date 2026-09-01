@@ -66,3 +66,63 @@ sb_charge_decision sb_charge_decide(const sb_charge_input *in)
     d.limit_mw = SB_CHG_FULL_MW;
     return d;
 }
+
+/* ── state of charge ─────────────────────────────────────────────────────────*/
+
+/* ⭐ FOUR POINTS, AND EVERY ONE OF THEM IS ON THE LP523450JU'S OWN DATASHEET.
+ * Two are the ends — 3.0 V cut-off, 4.2 V max charge — and two come from a line
+ * nobody reads as curve data: "Delivery State of Charge: Max. 30% (3.75-3.79V);
+ * Optional 60% (3.85-3.95V)". A cell shipped at a stated percentage and a
+ * stated voltage is a cell telling you where those two meet, and the midpoint
+ * of each band is the number it is telling you.
+ *
+ * ⚠️ WHAT THIS STILL DOES NOT KNOW is the shape between 3.0 and 3.77 V, which
+ * on a lithium cell is the long flat middle and most of the capacity. Straight
+ * lines between the points are the honest reading of a datasheet that gives
+ * four; a product ships either a characterised table or Nordic's fuel-gauge
+ * library, and both of those need the cell on a bench.
+ */
+static const struct { uint16_t mv; uint8_t pct; } SOC_CURVE[] = {
+    { SB_CELL_EMPTY_MV, 0 },
+    { 3770, 30 },        /* midpoint of the 3.75-3.79 V delivery band */
+    { 3900, 60 },        /* midpoint of the 3.85-3.95 V delivery band */
+    { SB_CELL_FULL_MV, 100 },
+};
+
+uint8_t sb_soc_from_ocv_mv(uint16_t mv)
+{
+    if (mv <= SOC_CURVE[0].mv) {
+        return 0;
+    }
+    const int n = (int)(sizeof(SOC_CURVE) / sizeof(SOC_CURVE[0]));
+    if (mv >= SOC_CURVE[n - 1].mv) {
+        return 100;
+    }
+    for (int i = 1; i < n; i++) {
+        if (mv < SOC_CURVE[i].mv) {
+            const int32_t dv = SOC_CURVE[i].mv - SOC_CURVE[i - 1].mv;
+            const int32_t dp = SOC_CURVE[i].pct - SOC_CURVE[i - 1].pct;
+            return (uint8_t)(SOC_CURVE[i - 1].pct +
+                             (int32_t)(mv - SOC_CURVE[i - 1].mv) * dp / dv);
+        }
+    }
+    return 100;
+}
+
+uint16_t sb_soc_ocv_mv(uint16_t terminal_mv, int16_t current_ma)
+{
+    /* ⛔ THE SIGN IS THE WHOLE POINT. Charging pushes the terminal ABOVE the
+     * open-circuit voltage and discharging pulls it below, so the correction is
+     * subtracted when charging and added when discharging. Getting it backwards
+     * doubles the error instead of removing it — and at 1 A into 180 mOhm that
+     * is 360 mV, which is a quarter of this cell's entire range. */
+    const int32_t drop_mv = (int32_t)current_ma * SB_CELL_IMPEDANCE_MOHM / 1000;
+    int32_t ocv = (int32_t)terminal_mv - drop_mv;
+    if (ocv < 0) {
+        ocv = 0;
+    }
+    if (ocv > 0xFFFF) {
+        ocv = 0xFFFF;
+    }
+    return (uint16_t)ocv;
+}

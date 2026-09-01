@@ -107,17 +107,22 @@ void sb_pmic_apply(const sb_charge_decision *d)
 			SENSOR_ATTR_CONFIGURATION, &v);
 }
 
-/* ⛔ STATE OF CHARGE IS NOT A THING THIS PMIC MEASURES. The nPM1300 has a fuel
- * gauge in the sense of reporting cell VOLTAGE and current; turning that into a
- * percentage is a model of the cell, and Nordic ship one as a separate library
- * rather than in the driver.
+/* ⛔ STATE OF CHARGE IS NOT A THING THIS PMIC MEASURES. The nPM1300 reports
+ * cell VOLTAGE, current and temperature; turning those into a percentage is a
+ * model of the cell, and Nordic ship one as a separate library rather than in
+ * the driver.
  *
- * ⚠️ So this is a voltage reading mapped linearly between the cell's own
- * discharge cut-off and its termination voltage, and it will be optimistic in
- * the middle of the curve and pessimistic at the ends, because a lithium
- * discharge curve is flat where this pretends it is not. It is honest about
- * being a placeholder rather than silently wrong: a real product wants the fuel
- * gauge library and a discharge table for the LP523450JU.
+ * ⭐ SO THE MODEL LIVES IN ../sb_power.c WHERE IT CAN BE TESTED, and this
+ * function is two sensor reads and a call. What it used to be was a straight
+ * line from 3.0 V to 4.2 V, which reads the cell's own stated 30% delivery
+ * state as 64% — see the comment on SOC_CURVE for the four datasheet points
+ * that replaced it, and test_sb_power.c for the assertions that hold it there.
+ *
+ * ⚠️ AND THE CURRENT MATTERS AS MUCH AS THE VOLTAGE. 180 mOhm of pack impedance
+ * against a 1 A charge is 180 mV of lift; reading the terminal voltage while
+ * charging and calling it state of charge is how a gauge jumps twenty points
+ * when a bag is put on its pad. If the current cannot be read the correction is
+ * zero, which is the old behaviour and is right for a resting cell.
  */
 uint8_t sb_pmic_battery_pct(void)
 {
@@ -130,13 +135,14 @@ uint8_t sb_pmic_battery_pct(void)
 		return 0;
 	}
 	const int mv = v.val1 * 1000 + v.val2 / 1000;
-	const int lo = 3000, hi = 4200;     /* cut-off and termination, datasheet */
 
-	if (mv <= lo) {
+	int ma = 0;
+	struct sensor_value i;
+	if (sensor_channel_get(charger, SENSOR_CHAN_GAUGE_AVG_CURRENT, &i) == 0) {
+		ma = i.val1 * 1000 + i.val2 / 1000;
+	}
+	if (mv < 0 || mv > 0xFFFF) {
 		return 0;
 	}
-	if (mv >= hi) {
-		return 100;
-	}
-	return (uint8_t)((mv - lo) * 100 / (hi - lo));
+	return sb_soc_from_ocv_mv(sb_soc_ocv_mv((uint16_t)mv, (int16_t)ma));
 }

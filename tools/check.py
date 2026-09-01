@@ -518,6 +518,117 @@ _cc = subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
 check("the generated pin map compiles with -Werror", _cc.returncode == 0,
       _cc.stderr.strip().splitlines()[0] if _cc.stderr.strip() else "")
 
+print("\n── the fuel gauge agrees with the cell it is gauging")
+# ⛔ THE OLD GAUGE WAS A STRAIGHT LINE AND THE CELL'S OWN DATASHEET REFUTES IT.
+# "Delivery State of Charge: Max. 30% (3.75-3.79V); Optional 60% (3.85-3.95V)"
+# is two points on this cell's discharge curve, and a linear 3.0-4.2 V map reads
+# the first of them as 64%. This checks that the curve in the firmware still has
+# the cell's numbers in it and that the ends are the cell's ends.
+_pwr_h = open(os.path.join(ROOT, "firmware", "sb_power.h")).read()
+_pwr_c = open(os.path.join(ROOT, "firmware", "sb_power.c")).read()
+_cell = _bom.BOM["BT1"]
+check("the gauge's empty and full are the cell's cut-off and charge ceiling",
+      "#define SB_CELL_EMPTY_MV 3000" in _pwr_h
+      and "#define SB_CELL_FULL_MV 4200" in _pwr_h,
+      "the endpoints have moved away from the datasheet's 3.0 / 4.2 V")
+check("the pack impedance is the datasheet's 180 mOhm",
+      "#define SB_CELL_IMPEDANCE_MOHM 180" in _pwr_h, "not 180")
+_pts = re.findall(r"\{ (\d+), (\d+) \}", _pwr_c)
+check("the curve still carries both delivery states",
+      ("3770", "30") in [(a, b) for a, b in _pts]
+      and ("3900", "60") in [(a, b) for a, b in _pts],
+      f"points found: {_pts}")
+check("and the cell it was read from is still the cell in the BOM",
+      _cell["mpn"].startswith("LP523450JU"),
+      f"BOM cell is {_cell['mpn']} — the curve above is not its curve")
+
+print("\n── the camera the model was trained for is the camera that is fitted")
+# ⛔ THREE FILES HAD TO AGREE ABOUT ONE NUMBER AND TWO OF THEM WERE WRONG.
+# ml/classify.py trains at 96x96 grey; ml/inference_budget.py charged the SPI
+# burst at one byte a pixel; firmware/sb_camera.c reads the Arducam Mega's own
+# register table, where the format register offers JPEG, RGB and YUV and no
+# grey at all. The budget was out by exactly a factor of two and nothing said
+# so, because the frame size lived separately in each file.
+_cam_h = open(os.path.join(ROOT, "firmware", "sb_camera.h")).read()
+_cam_w = int(re.search(r"#define SB_CAM_W (\d+)", _cam_h).group(1))
+_cam_hh = int(re.search(r"#define SB_CAM_H (\d+)", _cam_h).group(1))
+_infer = open(os.path.join(ROOT, "ml", "inference_budget.py")).read()
+_infer_px = int(re.search(r"^INPUT = (\d+)", _infer, re.M).group(1))
+check("the driver captures the size the model was trained on",
+      _cam_w == _cam_hh == _infer_px,
+      f"driver {_cam_w}x{_cam_hh}, model {_infer_px}x{_infer_px}")
+
+# The first camera mode in the budget is the one the driver actually uses, and
+# it has to be two bytes a pixel because the module cannot send fewer.
+_mode = re.search(r'CAM_MODES = \[\s*\("([^"]+)",\s*(\d+) \* (\d+) \* (\d+)\)',
+                  _infer)
+check("the budget charges the burst at the wire format, not the model's",
+      _mode is not None and int(_mode.group(4)) == 2,
+      f"{_mode.group(1) if _mode else '?'} at "
+      f"{_mode.group(4) if _mode else '?'} bytes/pixel — RGB565 is 2")
+check("and at the resolution the driver asks the module for",
+      _mode is not None and int(_mode.group(2)) == _cam_w
+      and int(_mode.group(3)) == _cam_hh,
+      f"budget {_mode.group(2)}x{_mode.group(3)}" if _mode else "no mode found")
+
+# ⚠️ 8 MHz is the module's ceiling and it is quoted in two files.
+_bom_cam = _bom.OPTICS["CAM"]["verdict"]
+_infer_mhz = float(re.search(r"CAM_SPI_MHZ = ([\d.]+)", _infer).group(1))
+check("the SPI ceiling in the budget is the one the BOM quotes",
+      f"{_infer_mhz:.0f} MHz" in _bom_cam,
+      f"budget {_infer_mhz:.0f} MHz; BOM says: {_bom_cam[:60]}...")
+
+print("\n── the illuminators are charged for the time they are actually on")
+# ⛔ 600 mW, AND THE BUDGET USED TO CHARGE IT FOR ONE FRAME OUT OF THREE. The
+# camera term covers the whole burst; part of that is the exposure, which needs
+# light, and part is an already-taken image crossing an 8 MHz bus, which does
+# not. The illuminator term has to be the first part, and the split is a
+# property of the firmware — sb_sense.c drops the pin between sb_cam_expose and
+# sb_cam_fetch — so this reads both files rather than trusting either.
+_budget = open(os.path.join(ROOT, "thermal", "budget.py")).read()
+def _duty(name):
+    """The seconds-per-event a budget line charges. ⚠️ The power column is an
+    expression ("0.136 * 3.3") often enough that parsing it is not worth it;
+    what this check is about is the duration."""
+    m = re.search(r'\("' + re.escape(name) + r'",[^,]+,\s*([\d.]+),\s*(\d+)\)',
+                  _budget)
+    return float(m.group(1)) if m else None
+
+_cam_s = _duty("camera burst (J1)")
+_led_s = _duty("IR illuminators")
+_frames = int(re.search(r"#define SB_CAPTURE_FRAMES (\d+)",
+                        open(os.path.join(ROOT, "firmware", "smartbag.h")).read()
+                        ).group(1))
+_transfer_s = _frames * (_cam_w * _cam_hh * 2) * 8 / (_infer_mhz * 1e6)
+check("the illuminator window is the camera window minus the transfer",
+      _led_s is not None and abs(_led_s - (_cam_s - _transfer_s)) < 0.005,
+      f"charged {_led_s:.3f} s; camera {_cam_s:.3f} s minus "
+      f"{_transfer_s:.3f} s of SPI = {_cam_s - _transfer_s:.3f} s")
+
+_sense_c = open(os.path.join(ROOT, "firmware", "sb_sense.c")).read()
+_expose_at = _sense_c.find("sb_cam_expose")
+_led_off_at = _sense_c.find("SB_PIN_IR_LED_EN, SB_PIN_LOW")
+_fetch_at = _sense_c.find("sb_cam_fetch")
+check("and the firmware drops the pin before it fetches the frame",
+      -1 < _expose_at < _led_off_at < _fetch_at,
+      f"expose@{_expose_at} led-off@{_led_off_at} fetch@{_fetch_at}")
+
+print("\n── something calls sb_feed")
+# ⛔ THE HOLE THIS PROJECT HAD FOR MOST OF ITS LIFE. Every decision the bag makes
+# hangs off sb_feed(), which was written, tested to 378 assertions, and never
+# called: the image booted, advertised, charged, answered a phone, and reported
+# an empty bag forever. A check that the loop exists is worth more than any
+# number of assertions about what it would do.
+_main_c = open(os.path.join(ROOT, "firmware", "target", "src", "main.c")).read()
+_cmake = open(os.path.join(ROOT, "firmware", "target", "CMakeLists.txt")).read()
+check("the target's main loop steps the sensing loop",
+      "sb_sense_step(" in _main_c, "main.c never calls it")
+check("and the sensing loop's events reach sb_feed",
+      "sb_feed(" in _main_c, "nothing in main.c feeds the state machine")
+for _src in ("sb_sense.c", "sb_camera.c"):
+    check(f"{_src} is in the image", f"../{_src}" in _cmake,
+          "not in target/CMakeLists.txt, so it is tested and not shipped")
+
 print("\n── the pictures are not older than what they show")
 # ⛔ NOTHING HAS EVER CHECKED THIS, and it is the easiest way for a repository to
 # start lying. A render is a claim about a design at a moment; the design moved

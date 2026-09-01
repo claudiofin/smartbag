@@ -45,6 +45,37 @@
 #define SB_CELL_LIMIT_C 45          /* above this the cell derates         */
 #define SB_CELL_ABS_MAX_C 55        /* above this it must not charge       */
 #define SB_CELL_MARGIN_K 5          /* nobody designs to the limit itself  */
+
+/* ── state of charge ─────────────────────────────────────────────────────────
+ *
+ * ⛔ THE LINEAR MAP WAS WRONG BY A THIRD OF THE GAUGE AND THE DATASHEET SAYS SO.
+ * npm1300.c used to spread 0..100% linearly across 3.0..4.2 V and call itself a
+ * placeholder. It is worse than that: the LP523450JU's own delivery-state line
+ * gives two points on its discharge curve — "Max. 30% (3.75-3.79V); Optional
+ * 60% (3.85-3.95V)" — and the linear map reads 3.77 V as 64% where the cell
+ * says 30%. A bag that reports two thirds of a charge on a cell that is nearly
+ * a third full is not a rough gauge, it is a wrong one.
+ *
+ * ⭐ SO THE CURVE HAS FOUR POINTS AND ALL FOUR ARE THE CELL'S OWN. Cut-off,
+ * the two delivery states, and the charge ceiling. Nothing between them is
+ * known from the datasheet, and this interpolates straight lines and says so —
+ * a real product characterises the cell or runs Nordic's fuel-gauge library,
+ * and both of those want the cell in hand.
+ */
+#define SB_CELL_EMPTY_MV 3000       /* discharge cut-off                      */
+#define SB_CELL_FULL_MV 4200        /* max charge voltage                     */
+#define SB_CELL_IMPEDANCE_MOHM 180  /* pack impedance including the PCM       */
+
+/* Open-circuit voltage in millivolts to percent, from the four datasheet
+ * points. `mv` must be the RESTED voltage — see sb_soc_ocv_mv(). */
+uint8_t sb_soc_from_ocv_mv(uint16_t mv);
+
+/* ⚠️ AND THE TERMINAL VOLTAGE IS NOT THE OPEN-CIRCUIT VOLTAGE. 180 mΩ against
+ * the 136 mA camera burst is 24 mV — a couple of percent — and against the
+ * 1000 mA charge current it is 180 mV, which is most of the useful range. Pass
+ * the current the PMIC reports, signed: positive charging into the cell,
+ * negative discharging out of it. */
+uint16_t sb_soc_ocv_mv(uint16_t terminal_mv, int16_t current_ma);
 #define SB_CHG_FULL_MW 5000         /* what a Qi pad will deliver          */
 #define SB_CHG_SLOW_MW 2900         /* what a CLOSED bag can dissipate     */
 

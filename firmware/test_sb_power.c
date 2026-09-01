@@ -146,6 +146,75 @@ static void test_the_profile_matches_the_thermal_model(void)
            "own model to 2.9 W\n", p.slow_mw);
 }
 
+
+/* ── the fuel gauge ────────────────────────────────────────────────────────── */
+static void test_the_curve_ends_where_the_cell_does(void)
+{
+    CHECK(sb_soc_from_ocv_mv(3000) == 0, "%u%% at the discharge cut-off",
+          sb_soc_from_ocv_mv(3000));
+    CHECK(sb_soc_from_ocv_mv(2500) == 0, "reported charge below cut-off");
+    CHECK(sb_soc_from_ocv_mv(4200) == 100, "%u%% at max charge voltage",
+          sb_soc_from_ocv_mv(4200));
+    CHECK(sb_soc_from_ocv_mv(4500) == 100, "went above 100%%");
+}
+
+static void test_the_two_delivery_states_are_where_the_cell_says(void)
+{
+    /* ⭐ THIS IS THE TEST THE LINEAR MAP FAILED. The datasheet ships this cell
+     * at 30% and 3.75-3.79 V, and at 60% and 3.85-3.95 V. Anything calling
+     * itself a gauge has to agree with the cell about its own delivery state. */
+    for (uint16_t mv = 3750; mv <= 3790; mv += 10) {
+        const uint8_t p = sb_soc_from_ocv_mv(mv);
+        CHECK(p >= 25 && p <= 35, "%u mV reads %u%%, cell says ~30%%", mv, p);
+    }
+    /* ⚠️ THE SECOND BAND IS 100 mV WIDE AND THAT IS THE DATASHEET'S TOLERANCE,
+     * NOT A CLAIM THAT EVERY VOLTAGE IN IT IS 60%. A cell shipped at 60% will
+     * measure somewhere inside it; what has to hold is that the middle reads
+     * 60 and the edges stay near it. Asserting the whole band at 60 was this
+     * test being wrong about the datasheet rather than the curve being wrong. */
+    CHECK(sb_soc_from_ocv_mv(3900) == 60, "the band's midpoint reads %u%%",
+          sb_soc_from_ocv_mv(3900));
+    for (uint16_t mv = 3850; mv <= 3950; mv += 10) {
+        const uint8_t p = sb_soc_from_ocv_mv(mv);
+        CHECK(p >= 45 && p <= 78, "%u mV reads %u%%, outside the 60%% band", mv, p);
+    }
+    /* And the old linear map is shown to be wrong, here, rather than described
+     * as approximate: 3770 mV across 3000..4200 is 64%. */
+    const int linear = (3770 - 3000) * 100 / (4200 - 3000);
+    CHECK(linear > 60, "the linear map was not actually wrong (%d%%)", linear);
+    CHECK(sb_soc_from_ocv_mv(3770) < linear - 20,
+          "the curve did not move away from the linear map");
+}
+
+static void test_it_never_goes_backwards(void)
+{
+    uint8_t last = 0;
+    for (uint16_t mv = 3000; mv <= 4200; mv += 5) {
+        const uint8_t p = sb_soc_from_ocv_mv(mv);
+        CHECK(p >= last, "%u mV reads %u%% after %u%%", mv, p, last);
+        last = p;
+    }
+}
+
+static void test_the_load_is_taken_off_the_reading(void)
+{
+    /* ⛔ 180 mOhm is the pack impedance, PCM included, and it is on the
+     * datasheet. Discharging 136 mA (the camera burst) sags the terminal by
+     * 24 mV; charging at 1 A lifts it by 180 mV. */
+    CHECK(sb_soc_ocv_mv(3746, -136) == 3746 + 24,
+          "discharge sag not added back: %u", sb_soc_ocv_mv(3746, -136));
+    CHECK(sb_soc_ocv_mv(3950, 1000) == 3950 - 180,
+          "charge lift not removed: %u", sb_soc_ocv_mv(3950, 1000));
+    CHECK(sb_soc_ocv_mv(3900, 0) == 3900, "changed a rested reading");
+
+    /* ⚠️ AND THIS IS WHY IT MATTERS: at 1 A the uncorrected reading is a
+     * different answer, not a slightly different one. */
+    const uint8_t raw = sb_soc_from_ocv_mv(3950);
+    const uint8_t fixed = sb_soc_from_ocv_mv(sb_soc_ocv_mv(3950, 1000));
+    CHECK(raw > fixed + 15, "correction moved the gauge by only %d points",
+          (int)raw - (int)fixed);
+}
+
 int main(void)
 {
     printf("sb_power: the charge policy\n");
@@ -159,6 +228,10 @@ int main(void)
     test_jeita_bands_reduce_rather_than_stop();
     test_the_tighter_limit_wins();
     test_the_profile_matches_the_thermal_model();
+    test_the_curve_ends_where_the_cell_does();
+    test_the_two_delivery_states_are_where_the_cell_says();
+    test_it_never_goes_backwards();
+    test_the_load_is_taken_off_the_reading();
     printf("%d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

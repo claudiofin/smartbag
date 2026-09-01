@@ -407,14 +407,19 @@ def passives():
 # front end (U8/U9 with U7 selecting columns), and the pin budget, solved by
 # moving the sixteen columns behind a multiplexer instead of onto GPIO.
 MISSING = [
-    ("a camera module", "J1 is a 10-way FFC carrying power, I2C, SPI and two "
-     "control lines, which is the right interface for a small sensor module — "
-     "but no module is chosen, and until one is, the optical half of the "
-     "recognition pipeline has no part number."),
-    ("an NPU", "the SoC is a 128 MHz Cortex-M33. ml/classify.py measured the "
-     "recognition method, not its runtime on this part. The 2 s settle window "
-     "the firmware already waits is the budget it has to fit in."),
+    # ⛔ THE FIRST TWO ENTRIES OF THIS LIST WERE ANSWERED AND THE LIST DID NOT
+    # NOTICE, which is the exact failure the passives dict was rewritten to stop
+    # having. The camera is CAM in OPTICS above — an Arducam Mega 3MP NoIR, with
+    # a driver in firmware/sb_camera.c written from its application note and its
+    # SDK — and the NPU question was settled by arithmetic in
+    # ml/inference_budget.py rather than by a part. Both are gone from here.
     ("a tuned antenna match", "L2/C6/C11 are the chip vendor's reference "
      "values. A chip antenna matches against the ground plane around it, and "
-     "this ground plane is not theirs."),
+     "this ground plane is not theirs. ⚠️ This one cannot be closed on paper: "
+     "it wants a network analyser and one of the boards this BOM orders."),
+    ("real sensor data", "every threshold in the firmware is either a datasheet "
+     "figure or arithmetic over one, and ml/classify.py's accuracy is measured "
+     "on rendered primitives. Whether a wallet can be told from a passport "
+     "through four IR LEDs at 96x96 is a question the built thing answers and "
+     "nothing else does."),
 ]

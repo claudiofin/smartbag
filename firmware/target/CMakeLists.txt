@@ -20,6 +20,8 @@ target_sources(app PRIVATE
     ../smartbag.c
     ../sb_power.c
     ../sb_sensors.c
+    ../sb_sense.c
+    ../sb_camera.c
     ../sb_fsr.c
     ../sb_ble.c
 )

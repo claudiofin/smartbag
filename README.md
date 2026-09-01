@@ -25,7 +25,7 @@ been built.
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
 | board | **111 footprints, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. **1 item of ~500 left** — see [Routing](#routing). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **23 of 23 agree** — see [The bill of materials](#the-bill-of-materials). |
-| firmware | the wake-up chain, the ledger, the taxel driver, the charge policy and the sensor bring-up — **378 assertions**, `-Werror`. ⭐ **And it builds for the nRF54L15**: [`firmware/target/`](firmware/target/) is a Zephyr app — nine HAL functions, the GATT service, the PMIC through Nordic's driver, a pin map **generated from the netlist** — at **173 KB of flash and 44 KB of RAM**, run by `tools/verify.sh`. ⚠️ Built, never run: nothing has met silicon. |
+| firmware | the wake-up chain, the ledger, the taxel driver, the charge policy, the sensor bring-up, **the sensing loop that finally calls `sb_feed()`** and an Arducam Mega driver written from its own register table — **1035 assertions**, `-Werror`. ⭐ **And it builds for the nRF54L15**: [`firmware/target/`](firmware/target/) is a Zephyr app — ten HAL functions, the GATT service, the PMIC through Nordic's driver, a pin map **generated from the netlist** — at **177 KB of flash and 72 KB of RAM**, run by `tools/verify.sh`. ⚠️ Built, never run: nothing has met silicon. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). ⚠️ It now has to run on a Cortex-M33, not an NPU. |
 | app | **written and running** — [`app/`](app/), tested against the firmware's own bytes. No native build; it is a web app. |
@@ -760,14 +760,58 @@ only, with the names in a table on the next page.
 
 ### What is still missing
 
-- **a camera module** — J1 is the right interface for a small sensor module, but
-  no module is chosen, and until one is, the optical half of the recognition
-  pipeline has no part number;
-- **an NPU** — the SoC is a 128 MHz Cortex-M33 and `ml/classify.py` measured the
-  method, not its runtime on that part;
+This list used to have five entries and now has two, and the three that left did
+not leave quietly:
+
+- ~~a camera module~~ — **CAM is an Arducam Mega 3MP NoIR**, $29.99, with a
+  driver in [`firmware/sb_camera.c`](firmware/sb_camera.c) written from its
+  application note's register table and its own SDK. ⛔ Writing that driver
+  found a mistake nobody had noticed: register 0x20 offers JPEG, RGB and YUV and
+  **no greyscale**, so the 96×96 frame the model wants is 18 432 bytes on the
+  wire and not 9 216, and `ml/inference_budget.py` had been charging the SPI
+  burst at half its real cost since the day it was written.
+- ~~an NPU~~ — settled by arithmetic rather than by a part;
+  `ml/inference_budget.py` puts the whole pipeline at 137…219 ms inside a 2 s
+  window the firmware already waits.
+- ~~a real fuel gauge~~ — the state of charge was a straight line from 3.0 V to
+  4.2 V. ⛔ **The cell's own datasheet refutes that line.** "Delivery State of
+  Charge: Max. 30% (3.75–3.79 V); Optional 60% (3.85–3.95 V)" is two points on
+  this cell's discharge curve, and the straight line reads the first of them as
+  **64% where the cell says 30%**. [`firmware/sb_power.c`](firmware/sb_power.c)
+  now interpolates the four points the datasheet actually gives, and corrects
+  the terminal voltage for 180 mΩ of pack impedance — at the 1 A charge current
+  that is 180 mV, a fifth of the cell's whole range.
 - **a tuned antenna match** — L2/C6/C11 are the chip vendor's reference values,
   and a chip antenna matches against the ground plane around it. This ground
-  plane is not theirs.
+  plane is not theirs. ⚠️ This one cannot be closed on paper; see
+  [Calibration](#calibration-the-four-things-a-datasheet-cannot-settle).
+- **real sensor data** — every threshold is a datasheet figure or arithmetic
+  over one, and `ml/classify.py`'s accuracy is measured on rendered primitives.
+  Whether a wallet can be told from a passport through four IR LEDs at 96×96 is
+  a question the built thing answers and nothing else does.
+
+## Calibration: the four things a datasheet cannot settle
+
+[`tools/calibrate.py`](tools/calibrate.py) is not a measurement, it is the form
+the measurement goes on. Four quantities in this design are properties of an
+*assembly* rather than of a part, so no amount of careful reading closes them:
+
+| | why a datasheet cannot answer it |
+|---|---|
+| **L′ of the coil** | WPC specifies inductance measured with *this* receiver's shielding against a reference transmitter — typically 5–30% above free air, and it moves both resonant capacitors |
+| **the FOD reference Q** | the transmitter compares the quality factor it sees against one the receiver *declares*. ⛔ There is no safe default: a bag that declares a Q it does not have is a bag that charges with a coin on it |
+| **the antenna match** | a chip antenna matches against the ground plane, the cell and the leather around it, none of which are in the vendor's reference layout |
+| **the radar's blind bins** | every pulsed radar sees its own package; how many bins that is depends on the enclosure it is bolted into |
+
+The tool computes each target and its acceptance window from the files that hold
+the model, prints the instrument and the procedure, and says which file each
+result moves. ⚠️ **It will not invent a measured column** — an empty field prints
+as "not measured" and the exit status stays non-zero until all four are filled.
+A calibration file that defaults to passing is worse than no file.
+
+```bash
+python3 tools/calibrate.py
+```
 
 ## Recognition fits the processor
 
@@ -787,7 +831,7 @@ the chosen module supports, and the deadlines are parsed out of
 | model | **6.99 M MACs/frame**, 51.6 k parameters at 96×96 grey |
 | memory | ~122 kB of the part's 256 kB |
 | inference | **27 ms/frame** at 2 MAC/cycle, 55 ms at 1 — ×3 frames = 82…164 ms |
-| capture | 28 ms for three 96×96 frames over the camera's 8 MHz SPI |
+| capture | **55 ms** for three 96×96 frames over the camera's 8 MHz SPI — ⛔ two bytes a pixel, because the module cannot send grey |
 | **end to end** | **110…191 ms against a 2000 ms settle window** |
 
 ⭐ **It fits by 10.5× at the pessimistic bound.** The NPU was not missing. It was
@@ -932,6 +976,54 @@ are injected, so all of it runs on a host — and does, under `-Wall -Wextra
 ⭐ **The power budget is the architecture.** A camera plus NPU burst costs more
 than the radio does all day, so nothing polls: each stage is armed only by the
 one before it, and the chain is armed only when the closure opens.
+
+### The hole: nothing read a sensor
+
+⛔ **`sb_feed()` was written, tested to hundreds of assertions, and never called.** Every
+decision the bag makes hangs off it — the wake-up chain, the ledger, the
+staleness rule — and for most of this project's life the image could boot,
+advertise, charge and answer a phone, and **report an empty bag forever**,
+because no code anywhere read a sensor and turned it into an event.
+
+[`firmware/sb_sense.c`](firmware/sb_sense.c) is that loop, and it is a state
+machine over the HAL rather than a driver, so the whole sequence runs on a laptop
+against a simulated bag:
+
+| state | what is powered | what it is waiting for |
+|---|---|---|
+| asleep | nothing, 25 µW | the zip, polled every 250 ms |
+| awake | the time-of-flight sensor, 20 mW | something crossing the mouth |
+| capturing | the camera and 600 mW of illuminators | three frames |
+| settling | nothing | the bag to stop moving, 2 s |
+| mapping | both radars, then the matrix | one sweep each |
+
+Three things in it are decisions rather than plumbing, and each has a test that
+fails without it:
+
+- ⛔ **A debounce is a commitment, not a delay.** Waiting 40 ms and reading again
+  still believes the second read. This refuses to change its mind until the raw
+  line has held the *new* value for the whole window — so a zip slider
+  chattering across the magnet produces **one** opening and four counted
+  bounces, rather than four openings.
+- ⛔ **The beam is broken, not shorter.** A range that merely got smaller is a
+  hand hovering. The burst fires on the break, so triggering on "closer than
+  before" fires on the hand as well as on what it was holding.
+- ⛔ **The illuminators are on for the exposure and not for the transfer.** The
+  exposure ends when the module raises its capture-done flag; the 18 kB that
+  follows is an image that already exists crossing an 8 MHz bus. Holding 600 mW
+  through it would add 18 ms a frame to a term `thermal/budget.py` charges at 15.
+  The loop drops the pin between `sb_cam_expose()` and `sb_cam_fetch()`, the host
+  test fails if a burst ever happens with the pin high, and `tools/check.py`
+  fails if the budget stops agreeing with the firmware about the window.
+
+⭐ **And two things did not need writing, which is worth saying as loudly.**
+Position and mass were already arithmetic: `sb_fsr_blobs()` returns a centroid in
+micrometres, a summed conductance that stands in for mass, a cell count and a
+compartment — connected components over 96 numbers, no model anywhere near it.
+Recognition was already trained: `ml/classify.py` trains an embedding once,
+offline, on rendered primitives the product will never see, and enrolment stores
+one prototype per object. Adding a second copy of either under a new name would
+have been the same fields twice.
 
 **The tests caught three real bugs**, all of which would have been miserable to
 find on hardware:

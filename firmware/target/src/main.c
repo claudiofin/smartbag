@@ -6,8 +6,8 @@
  * 378 host assertions. If a rule ever appears here it has escaped from
  * somewhere it could be checked, and it should be put back.
  *
- * ⚠️ NOT COMPILED. See src/sb_hal_zephyr.c and README.md: there is no nRF
- * Connect SDK on the machine this was written on.
+ * ⚠️ COMPILED, and that is recent. tools/check.py builds this image and fails
+ * if it does not link; see README.md for what that does and does not prove.
  */
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
@@ -17,6 +17,7 @@
 #include "sb_hal.h"
 #include "sb_power.h"
 #include "sb_sensors.h"
+#include "sb_sense.h"
 #include "sb_fsr.h"
 #include "sb_ble.h"
 
@@ -33,6 +34,25 @@ static sb_device dev;
 static sb_sensors sensors;
 static sb_enroll enroll;
 static const sb_config *const cfg = &SB_DEFAULTS;
+
+/* ⚠️ 28 kB of it — an 18 kB RGB565 frame and a 9 kB luma one — so it is a
+ * static and not a stack frame. Zephyr's main thread stack is 2 kB. */
+static sb_sense sense;
+
+/* The FSR front end: the multiplexer and the amplifiers behind the same HAL. */
+static void fsr_drive(void *c, uint8_t col, sb_fsr_drive m);
+static uint16_t fsr_read(void *c, uint8_t row);
+static void fsr_settle(void *c, uint32_t us);
+static sb_fsr_hal fsr_hal;
+
+/* ⭐ THE LOOP PRODUCES EVENTS AND sb_feed DECIDES WHAT THEY MEAN, and this
+ * three-line function is the entire join between them. Everything above it is
+ * silicon and everything below it is under host assertions. */
+static void feed(void *ctx, const sb_event *ev)
+{
+    ARG_UNUSED(ctx);
+    sb_feed(&dev, cfg, ev);
+}
 
 /* ⚠️ The Hall sensor is the whole wake-up chain's first link and it is also the
  * charge interlock's only input. Reading it in one place means the two cannot
@@ -52,6 +72,8 @@ int main(void)
     }
     sb_sensors_init(&sensors);
     sb_init(&dev, hal.now_ms(hal.ctx));
+    fsr_hal = (sb_fsr_hal){ fsr_drive, fsr_read, fsr_settle, NULL };
+    sb_sense_init(&sense, hal.now_ms(hal.ctx));
 
     int err = bt_enable(NULL);
     if (err) {
@@ -94,12 +116,68 @@ int main(void)
         const sb_charge_decision d = sb_charge_decide(&in);
         sb_pmic_apply(&d);
 
+        /* ⭐ AND HERE IS THE THING THAT WAS MISSING FOR THE WHOLE OF THIS
+         * PROJECT'S LIFE. sb_feed() is what turns a sensor into an inventory
+         * and until now nothing called it: the bag could boot, advertise,
+         * charge and answer a phone, and report itself empty forever. */
+        const uint32_t wait = sb_sense_step(&sense, &hal, &sensors, &fsr_hal,
+                                            now, feed, NULL);
+
         sb_tick(&dev, cfg, now);
 
-        /* ⚠️ 100 ms, not 1 ms. thermal/budget.py's 25 uW of "deep sleep" is the
-         * dominant term in the whole power budget once the sensors are idle,
-         * and it is only 25 uW if this loop is asleep almost all of the time. */
-        k_msleep(100);
+        /* ⚠️ THE SLEEP IS THE SENSING LOOP'S, NOT A CONSTANT. thermal/budget.py's
+         * 25 uW of deep sleep is the dominant term once the sensors are idle,
+         * and sb_sense_step returns 250 ms when the bag is shut and 30 while it
+         * is watching the mouth — so the bag polls fast exactly when something
+         * is happening and is asleep the rest of the time. The floor of 20 ms
+         * is there so the charge decision above still runs often enough to
+         * matter, and its ceiling is the loop's own answer. */
+        k_msleep(wait < 20 ? 20 : (wait > 250 ? 250 : wait));
     }
     return 0;
+}
+
+/* ── the taxel front end ──────────────────────────────────────────────────────
+ * ⚠️ Three lines of glue that could have lived in sb_hal_zephyr.c and do not,
+ * because sb_fsr.h's vtable is a different shape from sb_hal's and joining them
+ * there would have made that file know about both. */
+static void fsr_drive(void *c, uint8_t col, sb_fsr_drive m)
+{
+    ARG_UNUSED(c);
+    /* ⛔ THE POLARITY IS INVERTED HERE AND THAT IS THE BOARD, NOT A BUG.
+     * sb_fsr.c models a matrix where the idle columns are held at ground and
+     * the selected one is driven high. hardware/netlist.py drew the opposite
+     * and did it on purpose: all sixteen columns rest at VREF through R20..R35,
+     * and U7 — one CD74HC4067 — pulls exactly ONE of them down to ground. The
+     * topology is what sb_fsr.c actually depends on, which is that the idle
+     * columns sit at the same potential as the row amplifiers' summing junction
+     * and so cannot carry a sneak current. Which end of the supply that shared
+     * potential is does not change a single reading.
+     *
+     * ⭐ AND IT MEANS THE GHOSTING TEST'S BAD CASE CANNOT BE BUILT ON THIS
+     * BOARD. test_sb_fsr.c solves the network and finds a phantom taxel reading
+     * 39% of a real one when the idle columns float; here they cannot float,
+     * because sixteen resistors hold them. SB_FSR_HIZ and SB_FSR_LOW therefore
+     * do the same thing — disable the multiplexer — and the pull-ups do the
+     * rest.
+     *
+     * ⚠️ The channel is 0..15. There is no col+16: it is one 16:1 part, not two. */
+    switch (m) {
+    case SB_FSR_HIGH: hal.mux_select(hal.ctx, col); break;   /* select = pull low */
+    case SB_FSR_LOW:
+    case SB_FSR_HIZ:
+    default:          hal.mux_select(hal.ctx, -1); break;    /* the pull-ups hold */
+    }
+}
+
+static uint16_t fsr_read(void *c, uint8_t row)
+{
+    ARG_UNUSED(c);
+    return hal.adc_read(hal.ctx, row);
+}
+
+static void fsr_settle(void *c, uint32_t us)
+{
+    ARG_UNUSED(c);
+    hal.delay_us(hal.ctx, us);
 }

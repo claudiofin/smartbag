@@ -51,7 +51,17 @@ LOADS = [
     # Cortex-M33 at 128 MHz is a few milliamps; the NPU it replaced was charged
     # at 400 mW. See ml/inference_budget.py for the 164 ms.
     ("inference on the M33", 0.006 * 3.3, 0.164, 40),
-    ("IR illuminators", 0.60, 0.01, 40),
+    # ⛔ 10 ms WAS THE ILLUMINATION OF ONE FRAME, AND THERE ARE THREE. Worse, it
+    # was written before firmware/sb_camera.c existed and so before anyone knew
+    # what the module's capture actually costs. The burst above is charged 100
+    # ms for three frames; 55 ms of that is the 18432-byte RGB565 transfer at
+    # the module's 8 MHz ceiling (ml/inference_budget.py), and the transfer is
+    # an image that already exists moving across a bus. So the illuminators are
+    # on for the other 45 ms and not one millisecond more — which is a property
+    # of the firmware, not a hope: sb_sense.c raises the pin, calls
+    # sb_cam_expose, drops it, and only then calls sb_cam_fetch, and
+    # test_sb_sense.c fails if a burst ever happens with the pin high.
+    ("IR illuminators", 0.60, 0.045, 40),
     # Eight TLV9064 channels at ~0.5 mA each, plus the multiplexer, for the
     # length of one 16-column sweep.
     ("FSR sweep", 0.008 * 0.5e-3 * 3.3 * 1000, 0.005, 86400),
