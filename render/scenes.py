@@ -760,11 +760,21 @@ def scene_section(m, dist=1.38):
     # project points at to explain the product. A section plane goes through
     # whatever is in its way.
     for n, k in (("bag_body", "leather"), ("bag_hardware", "gold"),
-                 ("bag_handles", "leather"),
                  ("insert_walls", "microfibre"),
                  ("insert_collar", "microfibre"),
                  ("insert_base", "microfibre"), ("insert_floor", "fsr_film")):
         cuttable.append(load_stl(n, m[k], Z_INSERT if n.startswith("insert") else 0))
+
+    # ⛔ AND THE HANDLES GET THEIR OWN BOX, WHICH IS THE SECOND VERSION OF THIS
+    # FIX. Passing them to the section cut with everything else stopped the strap
+    # running through the opening — and left it SLICED IN MID-AIR instead: a
+    # severed loop hanging over the cut with nothing beneath it, because the
+    # panel it is sewn to has gone and it has not.
+    # ⭐ A quarter that retracts takes its handle with it. Full width, front half
+    # only: the front strap goes entirely, the back one keeps the wall it is
+    # attached to and stays whole.
+    handles = load_stl("bag_handles", m["leather"])
+    section_cut([handles], (0.0, -0.16, 0.20), (0.60, 0.30, 0.30))
     load_stl("battery", m["lipo"], Z_INSERT)
     load_stl("qi_coil", m["copper"], Z_INSERT - 6)
     load_stl("insert_dividers", m["microfibre_dark"], Z_INSERT)

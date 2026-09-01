@@ -244,10 +244,22 @@ def _load_section_set(m):
                     ("insert_walls", "microfibre"),
                     ("insert_collar", "microfibre"),
                     ("insert_base", "microfibre"),
-                    ("insert_floor", "fsr_film"), ("fsr_cable", "polyimide"),
-                    ("bag_handles", "leather")):
+                    ("insert_floor", "fsr_film"), ("fsr_cable", "polyimide")):
         dz = 0 if name.startswith("bag") else sc.Z_INSERT
         cuttable.append(sc.load_stl(name, m[k], dz))
+
+    # ⛔ THE HANDLES ARE CUT BY A DIFFERENT BOX, AND THAT IS THE WHOLE POINT.
+    # Passing them to the section cut leaves the front strap SLICED IN MID-AIR:
+    # a severed loop hanging over the opening with nothing under it, because the
+    # panel it was sewn to has retracted and it has not. Before that they were
+    # not cut at all and ran straight through the opening, which was worse.
+    #
+    # ⭐ A quarter that retracts takes its handle WITH it. So the handles get a
+    # box that spans the full width and only the front half in depth: the front
+    # strap goes away entirely, the back one — whose wall is still there — stays
+    # whole. Nothing is left hanging, and nothing passes through anything.
+    handles = sc.load_stl("bag_handles", m["leather"])
+    sc.section_cut([handles], (0.0, -0.16, 0.20), (0.60, 0.30, 0.30))
 
     sc.load_stl("battery", m["lipo"], sc.Z_INSERT)
     sc.load_stl("qi_coil", m["copper"], sc.Z_INSERT - 6)

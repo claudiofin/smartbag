@@ -82,8 +82,15 @@ FILMS = {
             # and In2.Cu took most of the routing.
             (220, 278, "the board", "196 × 20 mm strip · 4-layer rigid-flex"),
             (300, 358, "96 taxels", "the contents leave their imprint on the floor"),
-            (378, 422, "two 60 GHz arrays",
-             "2×4 patches, λ₀/2 pitch · no tags on the objects"),
+            # ⛔ THIS SAID "two 60 GHz arrays — 2x4 patches, λ₀/2 pitch" AND
+            # THAT DESIGN NO LONGER EXISTS. It was an invented transceiver with
+            # patch antennas etched on the board, and the parts search replaced
+            # it with an Acconeer A121, whose antenna is INSIDE THE PACKAGE.
+            # There is not a millimetre of 60 GHz copper on this board — that is
+            # one of the results the project is proudest of, and the film was
+            # still advertising the problem it solved.
+            (378, 422, "two 60 GHz radars",
+             "antenna inside the package · no tags on the objects"),
             (452, 538, "the bag stays a bag",
              "the insert slides out and moves to another one"),
         ],
@@ -111,8 +118,13 @@ FILMS = {
             # screen while the event is.
             (190, 246, "3 · the IR camera fires",
              "three frames as the object passes · invisible illuminators"),
+            # ⚠️ THE COLOURS ARE THE ONLY THING THAT TELLS THE SENSORS APART and
+            # until now nothing said which was which. Three translucent cones in
+            # a dark bag is a graphic effect unless the viewer is told: green is
+            # the time-of-flight sensor, pink is the camera, blue is the radar.
+            # There is ONE camera and TWO radars, and that is not guessable.
             (284, 330, "4 · the radar maps the volume",
-             "60 GHz through fabric: where the object landed"),
+             "blue: two radars · pink: the one camera · green: time-of-flight"),
             (356, 400, "5 · the FSR matrix weighs it",
              "96 taxels: footprint and mass, without a single tag"),
             (430, 510, "recognition without tags",
