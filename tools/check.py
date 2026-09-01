@@ -544,6 +544,8 @@ _SHOWS = {
     "render/views/exploded.png": ["cad/bag_and_insert.py", "dimensions.py",
                                   "render/scenes.py",
                                   "hardware/smartbag_core.kicad_pcb"],
+    "media/smartbag_discovery.mp4": ["render/animation.py", "render/scenes.py",
+                           "dimensions.py"],
     "media/smartbag.mp4": ["render/animation.py", "render/scenes.py",
                            "dimensions.py"],
     "media/smartbag_sequence.mp4": ["render/animation.py", "render/scenes.py",

@@ -37,12 +37,15 @@ LENGTH = {"opening": 120, "exploded": 168, "scanning": 144,
 
 def parse_args():
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    # ⚠️ Flags that take no value must say so, or the argument after them is
+    # swallowed as if it were theirs — the same trap render/scenes.py fell into.
+    BARE = {"--vertical"}
     free, skip = [], False
     for x in a:
         if skip:
             skip = False
         elif x.startswith("-"):
-            skip = True
+            skip = x not in BARE
         else:
             free.append(x)
 
@@ -50,7 +53,7 @@ def parse_args():
         return int(a[a.index(n) + 1]) if n in a else d
     return (free[0] if free else "opening", val("--width", 1600),
             val("--samples", 32), val("--threads", 5), val("--from", 1),
-            val("--to", 0))
+            val("--to", 0), "--vertical" in a)
 
 
 # ══ time tools ═══════════════════════════════════════════════════════════════
@@ -588,20 +591,44 @@ SHOTS = {"opening": opening, "exploded": exploded, "scanning": scanning,
 
 
 if __name__ == "__main__":
-    name, width, samples, threads, first, last = parse_args()
+    name, width, samples, threads, first, last, vertical = parse_args()
     n = LENGTH[name]
     sc.reset()
     sc.world()
     m = sc.palette()
-    sc.engine(samples, threads, width, int(width * 9 / 16))
+    # ⭐ 9:16 IS NOT A CROP OF 16:9, and treating it as one is why vertical video
+    # of a wide object looks like a mistake. A 196 mm board and a 276 mm bag are
+    # landscape things; the portrait frame has to be re-aimed at the part that is
+    # tall — the bag standing up, the insert coming out of it — rather than
+    # showing the same shot with the ends cut off.
+    # ⚠️ The camera pulls back by the ratio of the two aspect ratios, which keeps
+    # the subject's HEIGHT filling the frame instead of its width.
+    if vertical:
+        sc.engine(samples, threads, width, int(width * 16 / 9))
+    else:
+        sc.engine(samples, threads, width, int(width * 9 / 16))
     s = bpy.context.scene
     s.frame_start, s.frame_end = first, (last or n)
     s.render.fps = FPS
     s.render.image_settings.file_format = "PNG"
-    folder = os.path.join(OUT, name)
+    folder = os.path.join(OUT, name + ("_v" if vertical else ""))
     os.makedirs(folder, exist_ok=True)
     s.render.filepath = os.path.join(folder, "f")
     print(f"-- shot {name}: {n} frames at {width}px")
     SHOTS[name](m, n)
+    # ⚠️ AFTER the shot, because the shot is what creates the camera. Changing
+    # the lens rather than moving the camera keeps every keyframed position the
+    # shot set up: the framing changes, the choreography does not.
+    #
+    # ⛔ AND THE FACTOR IS BIGGER THAN ONE, WHICH IS NOT THE OBVIOUS DIRECTION.
+    # A portrait frame is narrower than a landscape one, so the instinct is to
+    # widen the lens — and that puts the subject in the middle of a tall empty
+    # room. Blender fits the sensor to the LARGER dimension by default, so
+    # turning the frame on its side already widened the horizontal field: the
+    # correction is to zoom back in until the bag spans the width again.
+    if vertical:
+        for obj in bpy.data.objects:
+            if obj.type == "CAMERA":
+                obj.data.lens *= 0.85
     bpy.ops.render.render(animation=True)
     print(f"DONE -> {folder}")
