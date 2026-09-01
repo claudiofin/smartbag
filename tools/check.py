@@ -219,22 +219,39 @@ def courtyard(lib, fp):
 # would test a floorplan nobody fabricates.
 _settled, _worst = pl.relax(nl.PARTS,
                             lambda l, f: open(pcb.footprint_path(l, f)).read(),
-                            rotation=nl.ROTATION)
+                            rotation=nl.ROTATION, decouple=nl.DECOUPLE,
+                            fanout=nl.FANOUT, fanout_out=nl.FANOUT_OUT_MM,
+                            fanout_via=nl.FANOUT_VIA_MM, pad_nets=nl.pad_nets,
+                            back=nl.BACK)
+# ⛔ THE ROTATION WAS MISSING HERE AND THE PLACER HAD IT. A part turned 90
+# degrees has its courtyard turned with it; this test used the unrotated box, so
+# for the two radars — the only rotated parts on the board — it was checking a
+# rectangle 0.15 mm out in each axis from the one that gets fabricated. Latent
+# for as long as nothing sat that close to them, and the moment the decoupling
+# capacitors moved up against the packages it reported two overlaps that are not
+# on the board and would have hidden any that were. Same function as the placer
+# now, so the two cannot disagree about geometry again.
 boxes = []
 for ref, _v, _s, lib, fp, _p, _hx, _hy in nl.PARTS:
     x, y = _settled[ref]
-    x0, x1, y0, y1 = courtyard(lib, fp)
-    boxes.append((ref, x + x0, x + x1, y + y0, y + y1))
+    x0, x1, y0, y1 = pl._box_for(
+        ref, lib, fp, lambda l, f: open(pcb.footprint_path(l, f)).read(),
+        nl.ROTATION)
+    boxes.append((ref, x + x0, x + x1, y + y0, y + y1, ref in nl.BACK))
+# ⚠️ TWO PARTS ON OPPOSITE SIDES OF THE BOARD DO NOT COLLIDE, and the moment
+# anything went on the back this test said the processor overlapped all four of
+# its own decoupling capacitors. A courtyard is a keep-out on ONE side.
 overlap = [(boxes[i][0], boxes[j][0])
            for i in range(len(boxes)) for j in range(i + 1, len(boxes))
-           if boxes[i][1] < boxes[j][2] and boxes[j][1] < boxes[i][2]
+           if boxes[i][5] == boxes[j][5]
+           and boxes[i][1] < boxes[j][2] and boxes[j][1] < boxes[i][2]
            and boxes[i][3] < boxes[j][4] and boxes[j][3] < boxes[i][4]]
 check("no two courtyards overlap", not overlap, str(overlap))
 # ⛔ THREE ISLANDS, NOT ONE, AND NOTHING ON THE FLEX. The board is a 196 mm strip
 # with two 30 mm flex tails in it; a package soldered across a section that bends
 # does not stay soldered. An earlier placement pass put a 24-way connector and a
 # row of resistors out over a tail, and off the board edge with them.
-outside = [r for r, x0, x1, y0, y1 in boxes
+outside = [r for r, x0, x1, y0, y1, _back in boxes
            if not any(ix0 <= x0 and x1 <= ix1 and iy0 <= y0 and y1 <= iy1
                       for ix0, ix1, iy0, iy1 in pl.ISLANDS)]
 check("every part sits on a rigid island, none on the flex tails",
@@ -517,6 +534,150 @@ _cc = subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
                      input=_probe, text=True, capture_output=True)
 check("the generated pin map compiles with -Werror", _cc.returncode == 0,
       _cc.stderr.strip().splitlines()[0] if _cc.stderr.strip() else "")
+
+print("\n── every supply pin has a capacitor next to it")
+# ⛔ THE CHECK THAT SHOULD HAVE EXISTED BEFORE THE FIRST ROUTE. netlist.py's
+# PLACEMENT table used to say, in as many words, "THE 100 nF PARTS HUG THE PINS
+# THEY DECOUPLE... the QFN has VDD on all four sides, so there is a capacitor on
+# all four sides" — and then named C5 as the one on the top edge, which is
+# 2.2 nF on DECRF and not a supply capacitor at all. U1 pins 47 and 48 never had
+# one, U7 never had one, and the three by the amplifiers sat eleven millimetres
+# away in a tidy row. Nothing noticed, because a comment is not a check.
+#
+# ⭐ PAD TO PAD, FROM THE SETTLED POSITIONS AND THE FOOTPRINTS. Part centres
+# would call a pin on the far side of a nine-millimetre package nine millimetres
+# from its own capacitor; what decides the loop inductance is where the copper
+# is. Both ends come out of place.pad_at(), which is the same function the
+# placement uses, so the check cannot disagree with the placer about geometry.
+#
+# ⚠️ 2 mm IS ALREADY GENEROUS. Nordic's layout guidance puts the 100 nF within
+# about a millimetre of the pin with its own via to ground. This asserts the
+# generous number so that a failure is a defect and not a preference.
+DECOUPLE_MM = 2.0
+
+def _cap_pad_distance(cap, ic, pin):
+    """Closest pad-to-pad millimetres between a capacitor and one IC pin."""
+    libs = {p[0]: (p[3], p[4]) for p in nl.PARTS}
+    text = lambda r: open(pcb.footprint_path(*libs[r])).read()
+    target = pl.pad_at(text(ic), pin, _settled[ic], nl.ROTATION.get(ic, 0))
+    if target is None:
+        return None
+    best = None
+    for num in ("1", "2"):
+        at = pl.pad_at(text(cap), num, _settled[cap], nl.ROTATION.get(cap, 0))
+        if at is None:
+            continue
+        d = ((at[0] - target[0]) ** 2 + (at[1] - target[1]) ** 2) ** 0.5
+        best = d if best is None else min(best, d)
+    return best
+
+_far, _broken = [], []
+for _cap, (_ic, _pin) in sorted(nl.DECOUPLE.items()):
+    _d = _cap_pad_distance(_cap, _ic, _pin)
+    if _d is None:
+        _broken.append(f"{_cap}->{_ic}.{_pin}")
+    elif _d > DECOUPLE_MM:
+        _far.append((_d, _cap, _ic, _pin))
+_far.sort(reverse=True)
+check("every DECOUPLE pair names a pad that exists", not _broken,
+      f"{len(_broken)} do not: {', '.join(_broken)}")
+check(f"every decoupling capacitor is within {DECOUPLE_MM:.0f} mm of its pin",
+      not _far,
+      f"{len(_far)} of {len(nl.DECOUPLE)} are not — "
+      + ", ".join(f"{c}->{i}.{p} {d:.2f} mm" for d, c, i, p in _far[:4]))
+
+# ⛔ AND THE OTHER HALF: a rail with no capacitor anchored to it at all is how
+# U7 went twenty-six millimetres without anyone noticing. Every IC pin on a
+# supply net has to be covered by SOME entry in DECOUPLE for its part.
+SUPPLY_NETS = {"VDD_3V3", "VSYS", "VDD_1V8", "VDDIO", "VBAT", "VREF"}
+_covered = {(ic, nl.part(ic) and None) for ic, _ in nl.DECOUPLE.values()}
+_by_ic = {}
+for _cap, (_ic, _pin) in nl.DECOUPLE.items():
+    _by_ic.setdefault(_ic, set()).add(_pin)
+_uncovered = []
+for _part in nl.PARTS:
+    _ref, _v, _sym, _lib, _fp, _pins, _x, _y = _part
+    if not _ref.startswith("U"):
+        continue
+    _rails = {net for _n, _pn, _t, net in _pins if net in SUPPLY_NETS}
+    if not _rails:
+        continue
+    _anchored = _by_ic.get(_ref, set())
+    _anchored_rails = {net for _n, _pn, _t, net in _pins
+                       if _n in _anchored or str(_n) in _anchored}
+    _miss = _rails - _anchored_rails
+    if _miss:
+        _uncovered.append(f"{_ref} ({', '.join(sorted(_miss))})")
+check("every IC rail has a capacitor anchored to it", not _uncovered,
+      f"{len(_uncovered)} without one: {'; '.join(_uncovered)}")
+
+print("\n── and every decoupling capacitor has a way back to ground")
+# ⛔ HALF A DECOUPLING FIX IS NOT A FIX. The distance check above passed on a
+# board where C7 — the processor's own decoupling on pin 22 — had its ground
+# terminal on a 0.69 mm2 island of pour with no via in it. One millimetre to the
+# supply pin and no return at all. The loop is what sets the inductance and the
+# loop is BOTH sides, so measuring one of them and declaring the job done is how
+# a board passes its own checks and does not work.
+#
+# ⚠️ AND THE FIRST FIX CAUSED THIS ONE. Putting the capacitors hard against the
+# packages is exactly what pinches the pour off around them — the escape routing
+# runs between package and capacitor and cuts the ground it used to sit on.
+# ⛔ TWO WRITERS, TWO DIALECTS, AND A CHECK THAT ONLY KNEW ONE. generate_pcb.py
+# writes a via's net as a NUMBER — `(net 3)` — because that is what it has;
+# KiCad's own writer, which touches the file again the moment anything runs
+# pcbnew on it, writes the NAME: `(net "GND")`. A regex that knows one of those
+# finds no vias at all on a board written by the other, and "no vias" reads here
+# as "no returns", which is the same shape as a real defect. Both forms, and a
+# hard failure if neither matches anything, because a check that silently sees
+# an empty board is worse than no check.
+_via_re = re.compile(
+    r'\(via\s+\(at ([-\d.]+) ([-\d.]+)\)(.*?)\(net (?:(\d+)|"([^"]*)")\)', re.S)
+_pcb_now = open(os.path.join(ROOT, "hardware", "smartbag_core.kicad_pcb")).read()
+_by_code = {int(m.group(1)): m.group(2)
+            for m in re.finditer(r'\(net (\d+) "([^"]*)"\)', _pcb_now)}
+_gnd_vias = []
+for _a, _b, _mid, _num, _name in _via_re.findall(_pcb_now):
+    _net = _name if _name else _by_code.get(int(_num), "")
+    if _net == "GND":
+        _gnd_vias.append((float(_a), float(_b)))
+check("the board file's vias can still be read", bool(_gnd_vias),
+      "no ground vias found at all — the board's s-expression dialect has "
+      "changed and this check is looking at nothing")
+
+RETURN_MM = 1.0
+_no_return = []
+for _cap in sorted(nl.DECOUPLE):
+    # ⭐ A CAPACITOR ON THE BACK NEEDS NO RETURN VIA AND THAT IS THE POINT OF IT
+    # BEING THERE. Its ground terminal lands on the bottom ground pour; the
+    # return path is the plane it is soldered to. Asking it for a via as well
+    # would be asking for a second connection to something it is already on —
+    # and a through via under a QFN is not free: four of them, one per pad,
+    # produced five shorts and two coincident drill holes. See flip_back.py.
+    if _cap in nl.BACK:
+        continue
+    _nets = nl.pad_nets(_cap)
+    _gnd_pin = next((n for n, net in _nets.items() if net == "GND"), None)
+    if _gnd_pin is None:
+        continue
+    _libs = {p[0]: (p[3], p[4]) for p in nl.PARTS}
+    _at = pl.pad_at(open(pcb.footprint_path(*_libs[_cap])).read(), _gnd_pin,
+                    _settled[_cap], nl.ROTATION.get(_cap, 0))
+    if _at is None:
+        continue
+    # ⚠️ Board coordinates, not the netlist's local frame: the vias above come
+    # out of the board file. U1's settled position is the bridge between them.
+    _ox = 210.0
+    _oy = 148.0
+    _bx, _by = _at[0] + _ox, _at[1] + _oy
+    _d = min((((_bx - vx) ** 2 + (_by - vy) ** 2) ** 0.5 for vx, vy in _gnd_vias),
+             default=None)
+    if _d is None or _d > RETURN_MM:
+        _no_return.append((_cap, _d))
+check(f"every decoupling capacitor has a ground via within {RETURN_MM:.0f} mm "
+      "of its return pad", not _no_return,
+      f"{len(_no_return)} of {len(nl.DECOUPLE)} do not — "
+      + ", ".join(f"{c} ({d:.2f} mm)" if d else f"{c} (none)"
+                  for c, d in _no_return[:5]))
 
 print("\n── every named part has a price against it")
 # ⛔ "A BOM IS NOT AN ORDER" AND THIS IS THE LINE BETWEEN THEM. Every entry here

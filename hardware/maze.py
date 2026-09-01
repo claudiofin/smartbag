@@ -361,12 +361,9 @@ class Grid:
                     if own:
                         mine_draws[L].rectangle([lo, hi], fill=1)
                     else:
-                        draws[L].rectangle([lo[0] - track_pad, lo[1] - track_pad,
-                                            hi[0] + track_pad, hi[1] + track_pad],
-                                           fill=1)
+                        draws[L].rectangle(_rect(lo, hi, track_pad), fill=1)
                 if not own:
-                    via_draw.rectangle([lo[0] - via_pad, lo[1] - via_pad,
-                                        hi[0] + via_pad, hi[1] + via_pad], fill=1)
+                    via_draw.rectangle(_rect(lo, hi, via_pad), fill=1)
 
         # ⛔ Rule areas are not copper and block anyway: a fiducial's window and
         # the antenna's clearance are the two places on this board where the
@@ -467,7 +464,29 @@ def rules_for(project, netname):
     return TRACK_W, CLEAR
 
 
+def _rect(lo, hi, pad):
+    """A pad's bounding box grown by `pad` cells, rounded OUT — see _box."""
+    pad = math.ceil(pad) + 1
+    return [math.floor(lo[0]) - pad, math.floor(lo[1]) - pad,
+            math.ceil(hi[0]) + pad, math.ceil(hi[1]) + pad]
+
+
 def _box(c, r):
+    """A bounding box for an obstacle circle of radius `r` cells, rounded OUT.
+
+    ⛔ PILLOW DRAWS ELLIPSES TO WHOLE PIXELS AND ROUNDS THEM IN. The line case a
+    few dozen lines up already knew this — it takes math.ceil of the width and
+    adds one — and the ellipse case did not, so every via on the board was drawn
+    as an obstacle up to a cell smaller than it is. At the fine 0.05 mm grid that
+    is 50 micrometres of clearance the router believed it had and did not.
+    That is not a rounding curiosity: it is exactly the size of the failures.
+    SPI_MISO came back from a 2264-cell search with sixteen clearance violations
+    of 0.02 to 0.08 mm, every one of them a track passing a via, and the router
+    had proposed each of them believing it was legal. A collision model that is
+    optimistic by less than a cell produces routes that are wrong by less than a
+    cell, which is the hardest kind of wrong to see and the easiest to fix.
+    """
+    r = math.ceil(r) + 1
     return [c[0] - r, c[1] - r, c[0] + r, c[1] + r]
 
 
@@ -795,6 +814,8 @@ def _pass(path):
                 grid.free_around(b)
                 found = route(grid, grid.cell(a), grid.cell(b))
                 if not found:
+                    if os.environ.get("MAZE_DEBUG"):
+                        print(f"    [dbg] {netname} p={pitch} w={width}: NO PATH")
                     continue
                 trial = pcbnew.LoadBoard(path)
                 tg = Grid(trial, net, x0 - MARGIN, y0 - MARGIN, x1 + MARGIN,
@@ -804,6 +825,9 @@ def _pass(path):
                 trial.Save(path)
                 tv, tu, _ = drc(path)
                 shutil.copy(pristine, path)
+                if os.environ.get("MAZE_DEBUG"):
+                    print(f"    [dbg] {netname} p={pitch} w={width}: {len(found)} "
+                          f"cells -> {tv} viol / {tu} unconn (base {base_v}/{base_u})")
                 if tu <= base_u and tv <= base_v:
                     if width != tw:
                         print(f"  {netname}: necked down to {width} mm to get out")

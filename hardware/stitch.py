@@ -84,6 +84,17 @@ def clear_of(x, y, obs):
     return True
 
 
+def _island_count(board):
+    """Filled polygons across every copper zone — one per island."""
+    n = 0
+    for zone in board.Zones():
+        if zone.GetIsRuleArea():
+            continue
+        for layer in zone.GetLayerSet().CuStack():
+            n += zone.GetFilledPolysList(layer).OutlineCount()
+    return n
+
+
 def main(path):
     board = pcbnew.LoadBoard(path)
     filler = pcbnew.ZONE_FILLER(board)
@@ -185,10 +196,35 @@ def main(path):
     if withdrawn:
         filler.Fill(board.Zones())
 
+    # ⛔ AND WHAT COULD NOT BE STITCHED IS NOT LEFT LYING THERE. An island of
+    # ground pour that reaches nothing is not ground: it is a floating piece of
+    # copper the size of whatever gap the routing happened to cut, and at
+    # 60 GHz that is not a neutral thing to leave on a board. It is also two
+    # entries in KiCad's unconnected list, which is how it was found — the
+    # report said "1 island left alone" for so long that the phrase stopped
+    # meaning anything.
+    #
+    # ⭐ THE ORDER IS WHAT MAKES THIS SAFE. Removal is switched on only AFTER
+    # every island that could take a via has one, so the fill deletes exactly
+    # the ones nothing could save and keeps every one this tool anchored. Doing
+    # it at the first fill — which is where a zone property naturally lives —
+    # would delete islands before they could be stitched, and quietly throw away
+    # copper that was about to become ground.
+    removed = 0
+    if skipped:
+        before = _island_count(board)
+        for zone in board.Zones():
+            if not zone.GetIsRuleArea():
+                zone.SetIslandRemovalMode(pcbnew.ISLAND_REMOVAL_MODE_ALWAYS)
+        filler.Fill(board.Zones())
+        removed = before - _island_count(board)
+
     board.Save(path)
     note = f", {withdrawn} withdrawn (refill left them in a void)" if withdrawn else ""
+    tail = (f", {removed} unstitchable island(s) removed from the pour"
+            if removed else "")
     print(f"OK  {added - withdrawn} stitching vias added{note}, "
-          f"{skipped} islands left alone (no clear spot) -> {path}")
+          f"{skipped} islands left alone (no clear spot){tail} -> {path}")
 
 
 if __name__ == "__main__":

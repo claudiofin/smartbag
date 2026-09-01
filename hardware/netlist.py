@@ -595,6 +595,13 @@ _PASSIVES = [
     ("C5", "2.2n X7R", "C_0402_1005Metric", "DECRF", "GND", -11.5, 3.5),
     ("C7", "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", -9.5, 3.5),
     ("C8", "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", -7.5, 3.5),
+    # ⛔ C9 IS THE CAPACITOR THE COMMENT BELOW CLAIMED WAS ALREADY THERE. The
+    # PLACEMENT table said "the QFN has VDD on all four sides, so there is a
+    # capacitor on all four sides" and named C5 as the one on the top edge — and
+    # C5 is 2.2 nF on DECRF, an internal regulator pin, not a supply. U1 pins 47
+    # and 48 have had no decoupling since the first schematic. Nothing caught it
+    # because a comment is not a check; tools/check.py now measures it.
+    ("C9",  "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", -19.0, -4.5),
     ("L1", "4.7u 120mA", "L_0603_1608Metric", "DCC", "VDD_3V3", -21.5, 3.5),
     # ⭐ The 2.4 GHz match. Nordic's reference is a pi network between ANT and
     # the antenna; the chip antenna's own datasheet then asks for a series
@@ -695,6 +702,11 @@ _PASSIVES = [
     ("C61", "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", 19.5, -8.0),
     ("C62", "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", 22.0, -8.0),
     ("C63", "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", 24.5, -8.0),
+    # ⛔ AND U7 HAD NONE AT ALL. The multiplexer sits 20 mm along the band from
+    # the nearest supply capacitor, which is not decoupling by any measure — it
+    # switches sixteen analogue channels against a rail it shares with the
+    # amplifiers whose input it is switching.
+    ("C64", "100n X7R", "C_0402_1005Metric", "VDD_3V3", "GND", 27.0, -8.0),
     # ⛔ The multiplexer common pin goes to ground through nothing but itself.
     # FSR_SINK exists as a named net so the schematic has to say so out loud.
     ("R12", "0R", "R_0402_1005Metric", "FSR_SINK", "GND", 35.0, -8.0),
@@ -754,34 +766,47 @@ PLACEMENT = {
     "U1": (-16.0, 0.0), "Y1": (-25.0, -6.0), "U5": (-25.0, 2.5),
     "Q1": (-29.5, -3.0), "R13": (-27.0, -3.0),
     "C52": (-27.5, 5.0), "L1": (-22.0, 5.0),
-    # ⛔ THE 100 nF PARTS HUG THE PINS THEY DECOUPLE. They used to sit in a
-    # tidy row along the top of the band, which looks organised and is wrong
-    # twice over: a decoupling capacitor two centimetres from its pin is an
-    # inductor, and it left the router with no nearby anchor for U1's supply
-    # pins — two of them stayed unrouted through five passes. The QFN has VDD on
-    # all four sides, so there is a capacitor on all four sides.
-    "C4": (-21.5, 1.2),      # beside pin 10, left edge
-    "C7": (-15.0, 5.0),      # beside pin 22, bottom edge
-    "C8": (-10.5, -1.2),     # beside pin 36, right edge
-    "C5": (-17.5, -5.0),     # beside pins 47/48, top edge
+    # ⚠️ THESE FOUR ARE HINTS AND NO LONGER THE ANSWER. DECOUPLE above says which
+    # pin each one belongs to and place.py puts it there; what is left here is a
+    # starting point for the relaxation, so the numbers only have to be roughly
+    # right. The version of this comment that used to sit here claimed the job
+    # was already done and named a capacitor on the wrong net to prove it.
+    "C4": (-21.5, 1.2),      # near pin 10, left edge
+    "C7": (-15.0, 5.0),      # near pin 22, bottom edge
+    "C8": (-10.5, -1.2),     # near pin 36, right edge
+    "C9": (-19.0, -4.5),     # near pins 47/48, top edge — the missing one
+    "C5": (-17.5, -5.5),     # DECRF, which is what it was always for
     "C1": (-21.5, -3.0), "C2": (-21.5, -1.0), "C3": (-13.0, 5.0),
     "R7": (-12.0, -6.0), "R8": (-9.5, -6.0),
     "U4": (-5.0, -6.0), "C50": (-2.5, -6.0), "C51": (-5.0, 5.0),
     # ── band 3 (x -2..+16): power ───────────────────────────────────────────
     "U3": (4.0, 0.0), "L3": (-1.0, 5.0), "L4": (1.5, 5.0),
-    "J2": (9.0, 6.0), "J3": (15.5, 6.0),
+    # ⛔ THE CELL CONNECTOR GOES IN THE BOTTOM LANE AND THAT WAS MEASURED, NOT
+    # PREFERRED. Its courtyard is 8.9 x 8.6 mm and it owns whichever lane it is
+    # in. In the top lane its lower edge runs along y = -0.3, which is exactly
+    # where the PMIC's VBAT pin sits, so that capacitor could never get nearer
+    # than 2.65 mm. Moving it down was assumed to cost routing room, so the
+    # board was routed both ways: top lane 8 unconnected, bottom lane 5. It is
+    # better in both respects, which is not what the guess said.
+    "J2": (10.5, -4.2), "J3": (15.5, 6.0),
     "C40": (-1.0, -5.5), "C41": (1.0, -5.5), "C42": (3.0, -5.5),
-    "C43": (5.0, -5.5), "C44": (7.0, -5.5), "C45": (9.0, -5.5),
-    "C46": (11.0, -5.5),
+    "C43": (7.4, 0.8), "C44": (6.0, 6.5), "C45": (8.0, 6.5),
+    "C46": (10.0, 6.5),
     "RT1": (13.0, -5.5), "R1": (15.0, -5.5),
-    "R2": (8.5, 0.5), "R3": (10.5, 0.5), "R4": (12.5, 0.5),
-    "R5": (14.5, 0.5), "R6": (16.5, 0.5),
+    # ⚠️ Shifted right by a millimetre and a half to leave the lane beside the
+    # PMIC's right edge free: pin 19 is VBAT, mid-edge, and its capacitor had
+    # nowhere nearer than three millimetres with R2 sitting in front of it.
+    "R2": (11.5, 0.5), "R3": (13.5, 0.5), "R4": (15.5, 0.5),
+    "R5": (17.5, 0.5), "R6": (19.5, 0.5),
     # ── band 4 (x +18..+26): the Qi receiver ────────────────────────────────
     # ⭐ Beside J3, because the coil's two wires and the resonant tank are the
     # one part of this board where centimetres of trace are a tuned element
     # rather than a connection.
     "U11": (21.0, 0.0), "J3": (17.0, 6.0),
-    "C80": (17.0, 2.5), "C81": (19.5, 2.5), "C88": (25.0, 2.5),
+    # ⚠️ 1.1, not 2.5: J3's courtyard reaches down to y = 2.44 once it is
+    # clamped against the top of the island, and the relaxation could not get
+    # these two out from under it.
+    "C80": (17.0, 1.1), "C81": (19.5, 1.1), "C88": (25.0, 1.1),
     "C82": (17.0, -3.0), "C83": (19.5, -3.0),
     "C84": (22.0, -3.0), "C85": (24.5, -3.0),
     "C86": (17.0, -6.5), "C87": (19.5, -6.5),
@@ -789,16 +814,102 @@ PLACEMENT = {
     # ── band 5 (x +28..+55): the FSR front end ──────────────────────────────
     # The connector is 18 mm long and owns the bottom of this band outright.
     "J4": (46.0, -4.8),
-    "U8": (30.0, 3.0), "U9": (36.5, 3.0), "U7": (55.0, 2.0),
+    # ⛔ U8 AND U9 USED TO BE 6.5 mm APART AND THAT IS NOT ENOUGH ROOM FOR THE
+    # CAPACITORS BETWEEN THEM. Their supply and reference pins face each other
+    # across 1.8 mm of gap, a 0402 courtyard is 1.5 mm, and the decoupling
+    # placement came back with "no room within 4 mm" for one of them. Nine
+    # millimetres costs nothing on a 196 mm board.
+    "U8": (28.0, 2.5), "U9": (39.5, 2.5), "U7": (55.0, 2.0),
     "R10": (29.0, -3.5), "R11": (31.5, -3.5), "R12": (34.0, -3.5),
-    "C60": (36.5, -1.0), "C61": (29.0, -8.0), "C62": (31.5, -8.0),
-    "C63": (34.0, -8.0),
+    # ⛔ THESE THREE USED TO SIT AT y = -8, ELEVEN MILLIMETRES BELOW THE
+    # AMPLIFIERS THEY DECOUPLE, in a tidy row along the bottom of the band. The
+    # hints now start them beside their own parts; DECOUPLE does the rest.
+    "C60": (33.0, 1.0), "C61": (27.5, 1.0), "C62": (34.0, 1.0),
+    "C63": (39.5, 1.0), "C64": (58.5, -1.0),
 }
 # TIA feedback, one row just under the amplifiers
-PLACEMENT.update({f"R{40 + i}": (28.5 + i * 2.3, 0.8) for i in range(6)})
+# ⚠️ y = -1.4, not 0.8: the feedback row shared a lane with the amplifiers'
+# supply pins and their capacitors, and a 0402 in that lane had nowhere to go.
+PLACEMENT.update({f"R{40 + i}": (28.5 + i * 2.3, -1.4) for i in range(6)})
 # the sixteen column pull-ups, two rows along the top
-PLACEMENT.update({f"R{60 + i}": (30.0 + (i % 8) * 2.4, 7.2 - (i // 8) * 2.4)
+# ⚠️ Two rows at 7.6 and 5.7, not 7.2 and 4.8. The lower row used to land on top
+# of the amplifiers at y = 3, so every round of the relaxation pushed sixteen
+# resistors and two ICs against each other and whatever was between them lost.
+PLACEMENT.update({f"R{60 + i}": (30.5 + (i % 8) * 2.4, 7.6 - (i // 8) * 1.9)
                   for i in range(16)})
+
+# ⛔ WHICH CAPACITOR DECOUPLES WHICH PIN, WRITTEN DOWN RATHER THAN IMPLIED BY A
+# COORDINATE. This used to live in the PLACEMENT comments — "beside pin 10",
+# "beside pins 47/48" — and one of those four claims was simply false while the
+# other three had drifted to two and three millimetres because the relaxation
+# pushes and nothing pulls. A comment cannot be checked and cannot be used.
+#
+# ⭐ place.py READS THIS AND PUTS EACH CAPACITOR AS CLOSE TO ITS PIN AS THE
+# COURTYARDS ALLOW, after the push-apart loop has settled everything else — the
+# same treatment the fiducials get, and for the same reason: a 0402 that has to
+# be within a millimetre of one specific pad is not an ordinary part, and a loop
+# that only knows how to shove things apart will never put it there.
+#
+# ⚠️ A pin appears once. Where an IC has several pins on one rail the capacitor
+# is anchored to ONE of them and the rail carries the rest; four capacitors on
+# four sides of a QFN is the intent, not four capacitors per pin.
+# ⛔ WHICH PACKAGES GET AN ESCAPE VIA AT EVERY SIGNAL PIN. generate_pcb.py draws
+# them and place.py has to know about them, because a 0402 dropped on top of the
+# via ring blocks the channel those signals leave through — which is exactly
+# what happened when the decoupling moved in: C7 landed on U1's bottom edge and
+# took RADAR_IRQ_R and CS_RADAR_R with it, two signals that had routed for
+# months. One list, read by both, so the placer cannot be ignorant of what the
+# board generator is about to draw 0.35 mm outside every pad.
+FANOUT = ("U1", "U3", "U7")
+FANOUT_OUT_MM = 0.35
+FANOUT_VIA_MM = 0.25
+
+# ⛔ THE PROCESSOR'S FOUR DECOUPLING CAPACITORS GO ON THE BACK, UNDER THEIR PINS.
+# This is the one place on the board where "as close to the pin as possible" and
+# "leave the escape channel alone" cannot both be had on the top layer. U1 is a
+# QFN48 on a 0.4 mm pitch with thirty-five signals to get out; each edge escapes
+# through a row of vias 0.35 mm outside the pads, and everything on that edge
+# travels the gap between the package and that row. A 0402 in the gap closes it —
+# measured, not assumed: putting them there cost RADAR_IRQ_R and CS_RADAR_R,
+# two signals that had routed for months.
+#
+# ⭐ UNDER THE PIN IS BOTH THE SHORTEST LOOP AND NO LOOP AT ALL FOR THE ROUTER.
+# The capacitor sits on B.Cu directly beneath its pad, its ground terminal is
+# already on the ground pour, and its supply terminal reaches the pin through a
+# via that goes straight up. Nothing crosses the surface. It is the standard
+# answer for a fine-pitch QFN on a dense board and every alternative here trades
+# decoupling quality for surface room.
+#
+# ⚠️ IT COSTS A SECOND ASSEMBLY SIDE, and that is a real number rather than a
+# detail: the other 109 parts are on the front, so the back exists for these
+# four. On five prototypes it is one extra stencil; in volume it is a second
+# reflow pass on every board. fab/README-FAB.md says so.
+BACK = ("C4", "C7", "C8", "C9")
+
+DECOUPLE = {
+    # the processor: one on each side of the QFN, which is what the datasheet
+    # asks for and what the board did not have
+    "C4": ("U1", "10"), "C7": ("U1", "22"), "C8": ("U1", "36"),
+    "C9": ("U1", "48"),
+    "C5": ("U1", "39"),        # DECRF, the internal RF regulator — not a rail
+    # the PMIC
+    "C40": ("U3", "4"), "C41": ("U3", "1"), "C42": ("U3", "32"),
+    "C43": ("U3", "19"), "C51": ("U3", "12"),
+    # the two radars, 1V8 and 3V3 each
+    "C21": ("U2", "J9"), "C22": ("U2", "C2"), "C23": ("U2", "J1"),
+    "C31": ("U6", "J9"), "C32": ("U6", "C2"), "C33": ("U6", "J1"),
+    # the Hall sensor and the level translator
+    "C52": ("U5", "1"), "C50": ("U4", "8"),
+    # the FSR front end: an amplifier each, the reference, and the multiplexer
+    # ⚠️ Anchored to pins on OPPOSITE sides of each amplifier. Both of U8's
+    # reference pins and its supply pin are on its left edge, and three 0402
+    # courtyards do not fit in the 1.4 mm of edge they share — the first attempt
+    # put one of them nowhere at all. The rail is the same on both sides of the
+    # part; the capacitor only has to be near A pin on it.
+    "C61": ("U8", "4"), "C60": ("U8", "12"),
+    "C62": ("U9", "4"), "C63": ("U9", "10"),   # opposite edges, see above
+    "C64": ("U7", "24"),
+}
 
 # ⭐ ROTATION IS PART OF THE FLOORPLAN, and leaving it out cost a routing pass.
 # The A121's SPI pins are all on one edge of the ball grid. With both sensors

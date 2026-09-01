@@ -23,7 +23,7 @@ been built.
 | | |
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
-| board | **111 footprints, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. **1 item of ~500 left** — see [Routing](#routing). |
+| board | **113 footprints, four layers, routed, and assembled on BOTH SIDES.** ⛔ It used to be 111 on one side, and finding out why is the largest thing in this session: **every one of the 41 IC supply pins had its decoupling capacitor further than 2 mm away**, the worst at 26 mm. See [Decoupling](#decoupling-the-defect-that-passed-every-check). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **23 of 23 agree** — see [The bill of materials](#the-bill-of-materials). |
 | firmware | the wake-up chain, the ledger, the taxel driver, the charge policy, the sensor bring-up, **the sensing loop that finally calls `sb_feed()`** and an Arducam Mega driver written from its own register table — **1035 assertions**, `-Werror`. ⭐ **And it builds for the nRF54L15**: [`firmware/target/`](firmware/target/) is a Zephyr app — ten HAL functions, the GATT service, the PMIC through Nordic's driver, a pin map **generated from the netlist** — at **177 KB of flash and 72 KB of RAM**, run by `tools/verify.sh`. ⚠️ Built, never run: nothing has met silicon. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
@@ -35,7 +35,7 @@ been built.
 | the 2.4 GHz antenna | ⛔ its datasheet found **three errors** in this design, one of them a terminal tied to ground that the part marks NC — see [The antenna](#the-antenna). |
 | the optics flex | **exists now.** J1 was a connector to nothing for the whole project: the camera, the illuminators and the ToF live here. DRC 0 errors, 1 unconnected item. |
 | the taxel sheet | **exists now.** 96 interdigitated sites, 16 columns and 6 rows, no components. **DRC 0 errors, 0 unconnected pads.** |
-| fabrication | Gerbers, drill, placement, DRC reports and a generated fab note for **all three boards**: `tools/fab.sh`. |
+| fabrication | Gerbers, drill, placement, DRC reports and a generated fab note for **all three boards**: `tools/fab.sh`. ⚠️ **Two assembly sides now** — the processor's four decoupling capacitors are underneath it. |
 | wireless power | ⛔ there was **no Qi receiver**: a coil was wired straight into a PMIC input that wants 4.0–5.5 V DC. There is now a BQ51013B, a dual resonant tank computed from the coil's own inductance, and a rectifier — see [Wireless power](#wireless-power). |
 
 Run everything that can be checked:
@@ -415,6 +415,27 @@ can do is fail to help, which on these four pads is what it reports.
 written the failed candidate into. Three rejected tracks accumulated in the
 board and the tool reported the damage as its starting state.
 
+⛔ **And the maze router's collision model was optimistic by less than a cell**,
+which is the hardest kind of wrong to see. Pillow rounds an ellipse *in*, so
+every via was drawn as an obstacle up to one grid cell smaller than it is — 50 µm
+at the fine pitch. `SPI_MISO` came back from a 2264-cell search with sixteen
+clearance violations of 0.02–0.08 mm, every one a track passing a via, and the
+router had proposed each of them believing it was legal. Rounding the obstacle
+circles out took it to one. See
+[Decoupling](#decoupling-the-defect-that-passed-every-check) for the other three
+of the same family.
+
+⭐ **Two of the last connections were never routing problems at all**, and
+[`hardware/repairs.py`](hardware/repairs.py) says so out loud. One is a *gap* —
+two pieces of a net a tenth of a millimetre apart, under a track width, which
+looks joined at any zoom a person would use. The other is a *missed drop*: a
+track that ends exactly on a pad, on the wrong layer, so the copper is in the
+right place, there is no via, and the ratsnest line is **zero millimetres long**.
+Sent at either, the maze router routes a centimetre around the houses, because
+the pair DRC names is the two islands' representative items and not the two ends
+that need joining. Each repair states what has to be true before it applies and
+**refuses loudly** if the board has moved under it.
+
 | | |
 |---|---|
 | tracks / vias | **1713 / 393**, 4.3 m of copper |
@@ -562,6 +583,111 @@ appear.
 ⭐ **The `.ses` is committed.** The routed board is a generated file — generator
 plus routing session — and committing only the board would make the routing
 something nobody could reproduce or review.
+
+## Decoupling: the defect that passed every check
+
+⛔ **Forty-one of forty-one.** Every supply pin of every IC on this board had its
+nearest decoupling capacitor on the same rail more than 2 mm away. The worst was
+the multiplexer at **26 mm** — a 100 nF part twenty-six millimetres from the pin
+it serves is not a capacitor, it is an inductor with a capacitor in series with
+it. The board had been routed, DRC'd, rendered, costed and declared orderable in
+that state.
+
+⚠️ **And `netlist.py` said it had already been fixed.** In as many words:
+
+> ⛔ THE 100 nF PARTS HUG THE PINS THEY DECOUPLE. […] The QFN has VDD on all four
+> sides, so there is a capacitor on all four sides.
+> `"C5": (-17.5, -5.0),  # beside pins 47/48, top edge`
+
+C5 is 2.2 nF on DECRF — an internal regulator pin, not a supply. **U1 pins 47 and
+48 never had decoupling at all**, and neither did U7. The comment described a
+repair that had happened on three edges out of four and nobody noticed, because
+**a comment is not a check**.
+
+### Why it drifted, and why it could not not drift
+
+`place.py` is a relaxation: *if two courtyards overlap, push both apart*. There
+is nothing in it that pulls anything toward anything. Every capacitor started at
+a hand-typed coordinate near its pin and every round moved it a little further
+away. The floorplan was a hint and the arbiter only knew one direction.
+
+So the intent moved out of the comments and into
+[`netlist.py`](hardware/netlist.py)'s `DECOUPLE` map — 23 pairs of *this
+capacitor serves that pin* — and `place.py` now reads the pin's real pad position
+out of the footprint and places the capacitor against it **after** the relaxation
+has settled everything else. Same treatment the fiducials get, for the same
+reason: a part that must be within a millimetre of one specific pad is not an
+ordinary part.
+
+### The half that was missed, which was the important half
+
+The distance check passed. Then the board came back with **C7 — the processor's
+own decoupling — sitting with its ground terminal on a 0.69 mm² scrap of pour
+that had no via in it.** Its return path went nowhere.
+
+⛔ **A capacitor 1 mm from its pin with a 20 mm return is worse than one 3 mm away
+with a via underneath it.** The loop is what sets the inductance and the loop is
+*both* sides. And it was not a coincidence: moving the capacitors hard against
+the packages is exactly what pinches the pour off around them. `generate_pcb.py`
+now drops a ground via 0.35 mm from every decoupling capacitor's return pad, and
+`tools/check.py` measures it.
+
+### And then the escape channels, which is why four parts are on the back
+
+A QFN48 on a 0.4 mm pitch escapes through a ring of vias 0.35 mm outside its
+pads, and everything on that edge travels the gap between the package and the
+ring. A 0402 in the gap closes it. Measured, not assumed: putting them there cost
+`RADAR_IRQ_R` and `CS_RADAR_R`, two signals that had routed for months.
+
+Widening the band the placer keeps clear recovered both. It did not recover the
+bottom edge, which has ten signals leaving it — so **U1's four capacitors are on
+the back, under their pins**. Ground terminal directly on the bottom pour,
+supply terminal up through a via in its own pad, nothing crossing the surface.
+
+⚠️ **It costs a second assembly side.** 109 parts on the front and four on the
+back: one extra stencil on five prototypes, a second reflow pass on every board
+in volume. That is in `fab/README-FAB.md` and it is a real number, not a detail.
+
+| what the checks now assert | |
+|---|---|
+| every DECOUPLE pair names a pad that exists | 23/23 |
+| every capacitor within 2 mm of its pin, **pad to pad** | 23/23 |
+| every capacitor has a ground via within 1 mm of its return | 19/19 on the front; the four on the back are *on* the pour |
+| every IC rail has a capacitor anchored to it | 0 uncovered |
+
+### Four tool bugs came out with it
+
+⛔ **The relaxation pushed by a fixed step.** A third of a millimetre each way is
+0.7 mm of separation per round, and a part in a lane only fractionally taller
+than itself gets thrown past the far wall, bounced back and thrown again —
+forever. C80 sat between a resistor and the coil connector in 1.82 mm of room
+needing 1.76, and six hundred rounds never placed it. It pushes by half the
+overlap now and converges in one.
+
+⛔ **The overlap check ignored rotation.** The two radars are the only rotated
+parts on the board, so for them it was checking a rectangle 0.15 mm out in each
+axis from the one that gets fabricated. Latent until something sat that close.
+
+⛔ **Pillow draws ellipses rounding *in*.** The maze router's line case already
+knew this — `math.ceil(width) + 1`, with a comment — and the ellipse case did
+not, so **every via was drawn as an obstacle up to a cell smaller than it is**. At
+the fine 0.05 mm grid that is 50 µm of clearance the router believed it had. Not
+a rounding curiosity: it is exactly the size of the failures. `SPI_MISO` came
+back from a 2264-cell search with sixteen clearance violations of 0.02–0.08 mm,
+every one a track passing a via, and the router had proposed each of them
+believing it was legal. Rounding the obstacle circles out took it to one.
+
+⛔ **`GetNetsByName()` does not match Python strings.** `"VDD_3V3" in nets.keys()`
+is `False` for a net that is right there. Two repair tools reported politely that
+they had nothing to do while skipping every net on the board — which is
+indistinguishable from a board with nothing wrong.
+
+⚠️ **And two writers, two dialects.** `generate_pcb.py` writes a via's net as a
+number (`(net 3)`); KiCad's own writer, which touches the file the moment
+anything runs `pcbnew` on it, writes the name (`(net "GND")`). The return-via
+check knew one of them, so on a board KiCad had rewritten it found **no vias at
+all** — and "no vias" has the same shape as a real defect. It reads both now, and
+fails loudly if it finds none.
 
 ## Thermal
 
@@ -962,9 +1088,13 @@ opening the zip in six months can tell the difference.
 | **two dielectric thicknesses** | 0.6 mm rigid islands on polyimide flex. ⭐ The 0.25 mm antenna islands are *gone* — that requirement died with the 60 GHz copper. |
 | **0.05 mm solder mask web** | fine-pitch QFN and 0402 land patterns cannot hold a wider one. Every fab that takes 0.1 mm lines takes it, but it has to be quoted. |
 
-⚠️ **No fiducials, no panelisation, no test points.** 0.5 mm-pitch BGA placement
-without fiducials is not a service anyone will offer; that is the next thing to
-add before a real assembly quote.
+| **two assembly sides** | ⚠️ NEW, and it is a cost rather than a note. 109 parts sit on the front and four on the back — the processor's decoupling, under its own pins, which is the only way to have both a short loop and a clear escape channel on a 0.4 mm-pitch QFN. One extra stencil on a prototype run; a second reflow pass in volume. See [Decoupling](#decoupling-the-defect-that-passed-every-check). |
+
+⭐ **Fiducials: six, two per rigid island.** Placed by
+[`hardware/place.py`](hardware/place.py), which searches a window around the
+intent rather than trusting a coordinate — 0.5 mm-pitch BGA placement without
+them is not a service anyone will offer. ⚠️ **No panelisation and no test
+points**; those are the next things to add before a real assembly quote.
 
 ## Firmware
 
@@ -1340,7 +1470,13 @@ hardware/generate_taxels.py  the 96-site force-sensing sheet: pure geometry
 hardware/optics_netlist.py   camera, illuminators and the time-of-flight sensor
 hardware/taxel_netlist.py    one connector and 22 nets; the rest is copper
 hardware/place.py            settles 99 hand-typed positions so no courtyards touch
-hardware/stitch.py           ties orphaned ground islands back to the plane
+hardware/stitch.py           ties orphaned ground islands back, deletes the rest
+hardware/flip_back.py        moves netlist.BACK's parts underneath, via in pad
+hardware/close_gaps.py       the two ways a router leaves a net a hair short
+hardware/repairs.py          the connections a person finished, written down
+hardware/maze.py             an A* router for what Freerouting gives up on
+tools/calibrate.py           the four things a datasheet cannot settle
+tools/order.py               the BOM as a basket, with what is not on a shelf
 ml/inference_budget.py       does the model fit a 128 MHz M33? counted, not guessed
 hardware/specctra.py         DSN out / SES in, plus the fixes the router needs
 hardware/place.py            a floorplan is a hint; this makes it a placement
@@ -1357,6 +1493,8 @@ tools/route.sh               generate -> DSN -> Freerouting -> SES -> fill -> DR
 tools/bom_report.py          footprints measured against the datasheets
 docs/app-and-ble.md          the BLE contract, and the reasoning behind it
 firmware/smartbag.[ch]       wake-up chain, ledger, staleness rule (portable C)
+firmware/sb_sense.[ch]       the loop that reads a sensor and calls sb_feed()
+firmware/sb_camera.[ch]      the Arducam Mega, by its own register table
 firmware/sb_fsr.[ch]         the taxel matrix: scanning it, and what goes wrong
 firmware/sb_ble.[ch]         GATT payloads, enrollment, the suppression rules
 firmware/test_*.c            405 host assertions, one of them a circuit solver

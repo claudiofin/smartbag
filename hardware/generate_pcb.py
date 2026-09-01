@@ -601,7 +601,7 @@ STITCH_ROWS = [
 ]
 
 
-def qfn_fanout(net_index, settled, refs=("U1", "U3", "U7")):
+def qfn_fanout(net_index, settled, refs=None):
     """A via just outside every signal pin of the dense QFNs, before routing.
 
     ⛔ FORTY-EIGHT PINS ESCAPING ON ONE LAYER IS THE BOTTLENECK, and it stayed
@@ -624,7 +624,7 @@ def qfn_fanout(net_index, settled, refs=("U1", "U3", "U7")):
     footprint's own pad positions decide which side it is on.
     """
     out = []
-    for ref in refs:
+    for ref in (refs or nl.FANOUT):
         px, py = settled[ref]
         text = open(footprint_path(*_fp_of(ref))).read()
         rot = math.radians(nl.ROTATION.get(ref, 0))
@@ -659,6 +659,60 @@ def qfn_fanout(net_index, settled, refs=("U1", "U3", "U7")):
             rx = bx * cos_t + by * sin_t
             ry = -bx * sin_t + by * cos_t
             out.append(via(px + rx, py + ry, net_index[net], size=0.25, drill=0.1))
+    return out
+
+
+def decoupling_return_vias(net_index, settled):
+    """A ground via at the ground pad of every decoupling capacitor.
+
+    ⛔ HALF A DECOUPLING FIX IS NOT A FIX, AND THIS IS THE HALF THAT WAS MISSED.
+    netlist.py's DECOUPLE map and place.py's anchored placement put every
+    capacitor within two millimetres of the pin it serves, and tools/check.py
+    measured it and passed. Then the board came back with C7 — the processor's
+    own decoupling on pin 22 — sitting with its ground terminal on a 0.69 mm2
+    scrap of pour that had no via in it at all. Its return path went nowhere.
+    A capacitor a millimetre from its pin with a twenty-millimetre return is
+    worse than one three millimetres away with a via underneath it, because the
+    loop is what sets the inductance and the loop is BOTH sides.
+
+    ⚠️ AND IT IS A CONSEQUENCE OF THE FIRST FIX RATHER THAN A COINCIDENCE.
+    Moving the capacitors hard against the packages is exactly what pinches the
+    pour off around them: the escape routing runs between the package and the
+    capacitor, and what used to be open ground becomes an island. The nearer the
+    capacitor gets, the more this matters, which is why it has to be placed
+    before routing rather than repaired after.
+
+    ⭐ 0.35 mm outward from the pad, the same escape the QFN fanout uses and for
+    the same reason: far enough not to sit in the pad, near enough that the via
+    IS the return.
+    """
+    out = []
+    for cap in sorted(nl.DECOUPLE):
+        if cap not in settled:
+            continue
+        nets = nl.pad_nets(cap)
+        gnd_pin = next((n for n, net in nets.items() if net == "GND"), None)
+        if gnd_pin is None:
+            continue
+        px, py = settled[cap]
+        text = open(footprint_path(*_fp_of(cap))).read()
+        rot = math.radians(nl.ROTATION.get(cap, 0))
+        cos_t, sin_t = math.cos(rot), math.sin(rot)
+        m = re.search(r'\(pad "' + re.escape(gnd_pin)
+                      + r'"[^\n]*\n\s*\(at ([-\d.]+) ([-\d.]+)', text)
+        if not m:
+            continue
+        ax, ay = float(m.group(1)), float(m.group(2))
+        # ⚠️ Outward along whichever axis the pad is offset on. A 0402's two pads
+        # are left and right of centre, so this walks away from the body rather
+        # than under it.
+        if abs(ax) >= abs(ay):
+            bx, by = ax + (0.35 if ax > 0 else -0.35), ay
+        else:
+            bx, by = ax, ay + (0.35 if ay > 0 else -0.35)
+        rx = bx * cos_t + by * sin_t
+        ry = -bx * sin_t + by * cos_t
+        out.append(via(px + rx, py + ry, net_index["GND"], size=0.25, drill=0.1))
     return out
 
 
@@ -756,7 +810,10 @@ def build():
     # schematic parity exists to catch.
     settled, worst = place.relax(nl.PARTS,
                                  lambda l, f: open(footprint_path(l, f)).read(),
-                                 rotation=nl.ROTATION)
+                                 rotation=nl.ROTATION, decouple=nl.DECOUPLE,
+                                 fanout=nl.FANOUT, fanout_out=nl.FANOUT_OUT_MM,
+                                 fanout_via=nl.FANOUT_VIA_MM, pad_nets=nl.pad_nets,
+                                 back=nl.BACK)
     print(f"    placement settled, worst displacement {worst:.2f} mm")
 
     # ⛔ The keepout is written BEFORE the pours so it is unambiguous which one
@@ -803,6 +860,7 @@ def build():
     # not connectivity have no business in a board file.
     r += via_in_pad(NET_INDEX, settled)
     r += qfn_fanout(NET_INDEX, settled)
+    r += decoupling_return_vias(NET_INDEX, settled)
     r += route(NET_INDEX, settled)
 
     # ── Silkscreen ───────────────────────────────────────────────────────

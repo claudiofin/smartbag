@@ -46,6 +46,12 @@ WORK="$(mktemp -d)"
 echo "== generate =="
 python3 hardware/generate_pcb.py | tail -1
 
+# ⛔ THE FLIP HAS TO HAPPEN BEFORE THE ROUTER SEES THE BOARD. generate_pcb.py is
+# a text generator and puts every part on the front; netlist.py's BACK list says
+# which belong underneath, and a router handed the unflipped board routes to
+# pads that are about to move to the other side.
+"$KPY" hardware/flip_back.py "$BOARD" | tail -1
+
 echo "== export DSN =="
 # In1.Cu is marked a PLANE, not a signal layer. ⛔ Without that the router uses
 # it: the first routed board put 34% of its tracks through the RF reference
