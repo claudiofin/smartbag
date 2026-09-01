@@ -92,7 +92,18 @@ def uid():
 # The FSR matrix no longer has a tail on the board: it gets an FFC connector
 # (J4) and a separate flat cable, which is also how it would really be
 # assembled (the cable pulls out).
-# ⭐ THE FLEX TAILS ARE 14 mm WIDE, NOT 8. They started at 8 because a narrow
+# ⭐ THE FLEX TAILS ARE 17 mm WIDE NOW, AND THEY STARTED AT 8. The argument has
+# not changed since the first widening, only the number: bend radius is a
+# function of THICKNESS, not width, so a wider tail folds exactly as tightly and
+# just carries more copper across the fold. 14 mm was still the bottleneck once
+# the real cell brought a JST PH twice the SH's size and the A121's fourteen
+# interior ground balls got the vias they needed — the SPI bus to the right
+# radar was the first thing the router gave up on, again.
+# ⚠️ 17 and not 20: the board is 20 mm tall, and a millimetre and a half of
+# polyimide either side of the copper is what keeps a fold from tearing at the
+# edge of a track.
+# (Historical note, because the reasoning is the useful part.) They started at 8
+# because a narrow
 # tail looks like the flexible thing it is, and 8 mm turned out to be the
 # bottleneck: eight nets have to cross each tail to reach a radar — three SPI
 # lines, a chip select, an interrupt, an enable and two supplies — and the
@@ -108,10 +119,10 @@ def uid():
 # ⚠️ The flex tails shrank from 30 mm to 22 with them. A tail folds on its
 # THICKNESS, not its length; 22 mm is still four times the bend radius.
 OUTLINE = [
-    (-98, -10), (-84, -10), (-84, -7), (-62, -7), (-62, -10),
-    (62, -10), (62, -7), (84, -7), (84, -10), (98, -10),
-    (98, 10), (84, 10), (84, 7), (62, 7), (62, 10),
-    (-62, 10), (-62, 7), (-84, 7), (-84, 10), (-98, 10),
+    (-98, -10), (-84, -10), (-84, -8.5), (-62, -8.5), (-62, -10),
+    (62, -10), (62, -8.5), (84, -8.5), (84, -10), (98, -10),
+    (98, 10), (84, 10), (84, 8.5), (62, 8.5), (62, 10),
+    (-62, 10), (-62, 8.5), (-84, 8.5), (-84, 10), (-98, 10),
 ]
 
 # ⭐ THE BOM AND THE PLACEMENT NOW LIVE IN netlist.py, next to the pins and the

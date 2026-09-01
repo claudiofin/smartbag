@@ -53,8 +53,19 @@ echo "== export DSN =="
 "$KPY" hardware/specctra.py export "$BOARD" "$WORK/board.dsn" In1.Cu | tail -1
 
 echo "== route ($PASSES passes) =="
+# ⛔ -mt 1, AND THE OBVIOUS SPEED-UP IS A TRAP. The optimiser's own log says
+# "route optimization on 1 thread", and on the wider-tailed board that phase ran
+# for over two hours after an auto-route that finished in eighteen minutes — so
+# handing it the other eight cores looks like the whole fix. Freerouting's answer
+# to -mt 8 is a warning in its own log: "Multi-threaded route optimization is
+# broken and it is known to generate clearance violations."
+#
+# ⚠️ So the stall is paid rather than solved. It costs wall-clock and nothing
+# else: the optimiser trims vias and length and does not change connectivity, so
+# a run killed during it loses tidiness, not routes — except that freerouting
+# only writes the session at the very end, which is why it has to be waited out.
 ( cd "$WORK" && java -jar "$JAR" -de board.dsn -do board.ses -mp "$PASSES" \
-    > freerouting.log 2>&1 ) || true
+    -mt 1 > freerouting.log 2>&1 ) || true
 grep -E "Auto-routing was completed|Saving" "$WORK/freerouting.log" | sed 's/^/  /'
 [ -f "$WORK/board.ses" ] || { echo "router produced no session file"; exit 1; }
 
