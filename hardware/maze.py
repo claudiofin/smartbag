@@ -44,7 +44,8 @@ import pcbnew
 from PIL import Image, ImageDraw
 
 MM = 1e6                      # pcbnew works in nanometres
-PITCH = 0.1                   # mm, one grid cell
+PITCH = 0.1                   # mm, one grid cell (see FINE_PITCH)
+FINE_PITCH = 0.05             # mm, the second attempt
 TRACK_W = 0.1                 # mm, replaced per net from the netclass
 CLEAR = 0.1                   # mm, likewise
 VIA_D, VIA_DRILL = 0.25, 0.10
@@ -288,14 +289,16 @@ class Grid:
     the In1 plane it punches through.
     """
 
-    def __init__(self, board, net, x0, y0, x1, y1, track_w=TRACK_W, clear=CLEAR):
-        self.track_w, self.clear = track_w, clear
+    def __init__(self, board, net, x0, y0, x1, y1, track_w=TRACK_W, clear=CLEAR,
+                 pitch=PITCH):
+        self.track_w, self.clear, self.pitch = track_w, clear, pitch
         self.x0, self.y0 = x0, y0
-        self.w = int((x1 - x0) / PITCH) + 1
-        self.h = int((y1 - y0) / PITCH) + 1
+        PITCH_ = pitch
+        self.w = int((x1 - x0) / PITCH_) + 1
+        self.h = int((y1 - y0) / PITCH_) + 1
         self.net = net
-        track_pad = (track_w / 2 + clear) / PITCH      # cells to fatten by
-        via_pad = (VIA_D / 2 + clear) / PITCH
+        track_pad = (track_w / 2 + clear) / PITCH_     # cells to fatten by
+        via_pad = (VIA_D / 2 + clear) / PITCH_
 
         self.track = {L: Image.new("1", (self.w, self.h), 0) for L in LAYERS}
         via_img = Image.new("1", (self.w, self.h), 0)
@@ -305,12 +308,12 @@ class Grid:
         mine_draws = {L: ImageDraw.Draw(im) for L, im in self.mine.items()}
 
         def px(p):
-            return ((p.x / MM - self.x0) / PITCH, (p.y / MM - self.y0) / PITCH)
+            return ((p.x / MM - self.x0) / PITCH_, (p.y / MM - self.y0) / PITCH_)
 
         for t in board.GetTracks():
             own = t.GetNetCode() == net
             if t.Type() == pcbnew.PCB_VIA_T:
-                r = t.GetWidth(pcbnew.F_Cu) / MM / 2 / PITCH
+                r = t.GetWidth(pcbnew.F_Cu) / MM / 2 / PITCH_
                 c = px(t.GetPosition())
                 if own:
                     for L in LAYERS:
@@ -322,7 +325,7 @@ class Grid:
             else:
                 L = t.GetLayer()
                 a, b = px(t.GetStart()), px(t.GetEnd())
-                r = t.GetWidth() / MM / 2 / PITCH
+                r = t.GetWidth() / MM / 2 / PITCH_
                 if own:
                     if L in mine_draws:
                         mine_draws[L].line([a, b], fill=1, width=max(1, int(2 * r)))
@@ -348,10 +351,10 @@ class Grid:
             for pad in fp.Pads():
                 own = pad.GetNetCode() == net
                 bb = pad.GetBoundingBox()
-                lo = ((bb.GetLeft() / MM - self.x0) / PITCH,
-                      (bb.GetTop() / MM - self.y0) / PITCH)
-                hi = ((bb.GetRight() / MM - self.x0) / PITCH,
-                      (bb.GetBottom() / MM - self.y0) / PITCH)
+                lo = ((bb.GetLeft() / MM - self.x0) / PITCH_,
+                      (bb.GetTop() / MM - self.y0) / PITCH_)
+                hi = ((bb.GetRight() / MM - self.x0) / PITCH_,
+                      (bb.GetBottom() / MM - self.y0) / PITCH_)
                 for L in LAYERS:
                     if not pad.IsOnLayer(L):
                         continue
@@ -373,8 +376,8 @@ class Grid:
                 continue
             poly = zone.Outline()
             for i in range(poly.OutlineCount()):
-                pts = [((poly.Outline(i).CPoint(k).x / MM - self.x0) / PITCH,
-                        (poly.Outline(i).CPoint(k).y / MM - self.y0) / PITCH)
+                pts = [((poly.Outline(i).CPoint(k).x / MM - self.x0) / PITCH_,
+                        (poly.Outline(i).CPoint(k).y / MM - self.y0) / PITCH_)
                        for k in range(poly.Outline(i).PointCount())]
                 if len(pts) < 3:
                     continue
@@ -401,7 +404,7 @@ class Grid:
             ring = _chain(outline)
             ed.polygon(ring, fill=0)
             ed.line(ring + [ring[0]], fill=1,
-                    width=max(2, int(2 * (track_w / 2 + clear) / PITCH)))
+                    width=max(2, int(2 * (track_w / 2 + clear) / PITCH_)))
         outside = np.array(edge, dtype=bool)
         for L in LAYERS:
             self.blocked[L] |= outside
@@ -422,7 +425,7 @@ class Grid:
         coarse, and let something exact refuse.
         """
         cx, cy = self.cell(mm_xy)
-        r = int(radius / PITCH)
+        r = int(radius / self.pitch)
         y0, y1 = max(0, cy - r), min(self.h, cy + r + 1)
         x0, x1 = max(0, cx - r), min(self.w, cx + r + 1)
         yy, xx = np.ogrid[y0:y1, x0:x1]
@@ -431,11 +434,11 @@ class Grid:
             self.blocked[L][y0:y1, x0:x1] &= ~disk
 
     def cell(self, mm_xy):
-        return (int(round((mm_xy[0] - self.x0) / PITCH)),
-                int(round((mm_xy[1] - self.y0) / PITCH)))
+        return (int(round((mm_xy[0] - self.x0) / self.pitch)),
+                int(round((mm_xy[1] - self.y0) / self.pitch)))
 
     def mm(self, cell):
-        return (self.x0 + cell[0] * PITCH, self.y0 + cell[1] * PITCH)
+        return (self.x0 + cell[0] * self.pitch, self.y0 + cell[1] * self.pitch)
 
 
 def rules_for(project, netname):
@@ -617,6 +620,24 @@ def simplify(path):
     return out
 
 
+def _layer_at(board, net, pt):
+    """Which copper layer this net already occupies at a point, or None."""
+    for t in list(board.GetTracks()):
+        if t.GetNetCode() != net or t.Type() == pcbnew.PCB_VIA_T:
+            continue
+        for e in (t.GetStart(), t.GetEnd()):
+            if abs(e.x / MM - pt[0]) < 0.03 and abs(e.y / MM - pt[1]) < 0.03:
+                return t.GetLayer()
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetCode() != net:
+                continue
+            p = pad.GetPosition()
+            if abs(p.x / MM - pt[0]) < 0.06 and abs(p.y / MM - pt[1]) < 0.06:
+                return pcbnew.F_Cu
+    return None
+
+
 def apply(board, grid, path, net, ends=None):
     """Write the route onto the board. Returns the items added.
 
@@ -648,15 +669,30 @@ def apply(board, grid, path, net, ends=None):
             t.SetNetCode(net)
             board.Add(t)
             items.append(t)
-    for (l1, p1), (l2, _p2) in zip(runs, runs[1:]):
+    def add_via(xy):
         v = pcbnew.PCB_VIA(board)
-        v.SetPosition(pcbnew.VECTOR2I(*[int(x * MM) for x in grid.mm(p1[-1][:2])]))
+        v.SetPosition(pcbnew.VECTOR2I(int(xy[0] * MM), int(xy[1] * MM)))
         v.SetWidth(int(VIA_D * MM))
         v.SetDrill(int(VIA_DRILL * MM))
         v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
         v.SetNetCode(net)
         board.Add(v)
         items.append(v)
+
+    for (l1, p1), (l2, _p2) in zip(runs, runs[1:]):
+        add_via(grid.mm(p1[-1][:2]))
+
+    # ⛔ AND A VIA AT EACH END IF THE ROUTE LANDS ON THE WRONG LAYER. The path
+    # may legitimately start on B.Cu — that is what makes it routable — while
+    # the fragment it has to reach is a 0.35 mm stub on F.Cu. The wire then comes
+    # back from DRC beautifully drawn, clearance-clean and STILL UNCONNECTED,
+    # which is the single most confusing failure this file can produce and cost
+    # seven refused routes before anyone looked at which layer each end was on.
+    if ends:
+        for xy, (layer_i, pts) in ((ends[0], runs[0]), (ends[1], runs[-1])):
+            want = _layer_at(board, net, xy)
+            if want is not None and want != LAYERS[layer_i]:
+                add_via(xy)
     return items
 
 
@@ -742,16 +778,40 @@ def _pass(path):
         # whichever DRC liked sounded strictly better and was strictly worse: it
         # found the same routes, spent four DRC runs per net doing it, and the
         # extra candidates were all near-misses that pushed the good one out.
+        # ⚠️ AND A FINER GRID IF THE COARSE ONE'S ROUTE IS REFUSED. A tenth of a
+        # millimetre per cell is plenty for going around a component and not
+        # enough for threading between two vias: the last connection on this
+        # board came back 0.02 mm inside the Power class's clearance, which is a
+        # fifth of one cell. Halving the pitch quadruples the search and is worth
+        # it exactly once, on the connection nothing else could close.
         found = grid = None
-        for width in (tw, TRACK_W) if tw > TRACK_W else (tw,):
-            grid = Grid(board, net, x0 - MARGIN, y0 - MARGIN,
-                        x1 + MARGIN, y1 + MARGIN, track_w=width, clear=cl)
-            grid.free_around(a)
-            grid.free_around(b)
-            found = route(grid, grid.cell(a), grid.cell(b))
+        widths = (tw, TRACK_W) if tw > TRACK_W else (tw,)
+        for pitch in (PITCH, FINE_PITCH):
+            for width in widths:
+                grid = Grid(board, net, x0 - MARGIN, y0 - MARGIN,
+                            x1 + MARGIN, y1 + MARGIN, track_w=width, clear=cl,
+                            pitch=pitch)
+                grid.free_around(a)
+                grid.free_around(b)
+                found = route(grid, grid.cell(a), grid.cell(b))
+                if not found:
+                    continue
+                trial = pcbnew.LoadBoard(path)
+                tg = Grid(trial, net, x0 - MARGIN, y0 - MARGIN, x1 + MARGIN,
+                          y1 + MARGIN, track_w=width, clear=cl, pitch=pitch)
+                apply(trial, tg, found, net, ends=(a, b))
+                pcbnew.ZONE_FILLER(trial).Fill(trial.Zones())
+                trial.Save(path)
+                tv, tu, _ = drc(path)
+                shutil.copy(pristine, path)
+                if tu <= base_u and tv <= base_v:
+                    if width != tw:
+                        print(f"  {netname}: necked down to {width} mm to get out")
+                    if pitch != PITCH:
+                        print(f"  {netname}: took a {pitch} mm grid to thread it")
+                    break
+                found = None
             if found:
-                if width != tw:
-                    print(f"  {netname}: necked down to {width} mm to get out")
                 break
         if not found:
             print(f"  {netname}: no route in a {2 * MARGIN:.0f} mm corridor")

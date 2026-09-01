@@ -21,7 +21,7 @@ BOM vs footprints — measured, not asserted
   ok J3   SM02B-SRSS-TB(LF)(SN)  JST-SH-02  datasheet   2 pins / 4.25x2.9 mm   footprint   2 pins /   5.8x6.6 mm   [pdf not archived]
   ok J5   SM04B-SRSS-TB(LF)(SN)  JST-SH-04  datasheet   4 pins / 6.25x2.9 mm   footprint   4 pins /   7.8x6.6 mm   [pdf not archived]
   ok AE1  2450AT43F0100E         SMD chip   datasheet   2 pins / 6.0x2.0 mm   footprint   2 pins /   7.4x2.7 mm   [pdf not archived]
-  ok U10  VL53L1X                LGA-12     datasheet  12 pins / 4.9x2.5 mm   footprint  12 pins /   5.5x3.1 mm
+  ok U10  VL53L1CXV0FY/1         LGA-12     datasheet  12 pins / 4.9x2.5 mm   footprint  12 pins /   5.5x3.1 mm
   ok J11  SM06B-SRSS-TB(LF)(SN)  JST-SH-06  datasheet   6 pins / 8.25x2.9 mm   footprint   6 pins /   9.8x6.6 mm   [pdf not archived]
 
   availability, as of 2026-08-30 — a snapshot, not a promise:
@@ -70,8 +70,8 @@ BOM vs footprints — measured, not asserted
      0402           2.2u X6T 2.5V          x2   C1 C2
      0402           2.7n                   x1   L2
      0402           220R 1%                x1   R20
-     0603           270n C0G (Cs)          x1   C80
-     0402           2n7 C0G (Cd)           x1   C81
+     0603           220n C0G (Cs)          x1   C80
+     0402           2n2 C0G (Cd)           x1   C81
      0402           4.7k 1%                x2   R7 R8
      0603           4.7u 120mA             x1   L1
      0603           470n X7R 25V           x2   C84 C85

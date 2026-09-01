@@ -466,6 +466,30 @@ check("every ball matches name, position, size and layers",
 # only symptom is a peripheral that does not answer. firmware/target/src/
 # sb_pinmap.h is generated from netlist.py; if regenerating it would change
 # anything, somebody has edited one of the two and not the other.
+# ⛔ THE RESONANT CAPACITORS ARE COMPUTED IN ONE FILE AND FITTED IN ANOTHER, and
+# nothing joined them until the coil changed. hardware/qi_resonance.py derives Cs
+# and Cd from the coil's inductance and WPC's 100 kHz and 1 MHz; netlist.py has
+# two capacitors with values typed into them. Swapping the coil for one that is
+# actually in a catalogue moved the inductance from 8.8 to 12 µH — and would have
+# left a tank tuned for a coil nobody could buy.
+print("\n── the Qi tank is tuned for the coil that is fitted")
+
+sys.path.insert(0, os.path.join(ROOT, "hardware"))
+import qi_resonance as _qi                                        # noqa: E402
+import netlist as _nl2                                            # noqa: E402
+
+_want_cs, _want_cd = _qi.preferred()
+_fitted = {p[0]: p[1] for p in _nl2._PASSIVES}
+_cs = _fitted.get("C80", "")
+_cd = _fitted.get("C81", "")
+check("Cs on the board is what the coil asks for",
+      _cs.startswith(_want_cs), f"board {_cs!r}, computed {_want_cs}")
+check("Cd on the board is what the coil asks for",
+      _cd.startswith(_want_cd), f"board {_cd!r}, computed {_want_cd}")
+check("the coil in the BOM is the one the resonance was computed from",
+      _bom.BOM["L_COIL"]["mpn"] == _qi.COIL_MPN,
+      f"BOM {_bom.BOM['L_COIL']['mpn']}, resonance {_qi.COIL_MPN}")
+
 print("\n── the firmware's pin map is still the schematic's")
 
 _pm = os.path.join(ROOT, "firmware", "target", "src", "sb_pinmap.h")

@@ -30,8 +30,15 @@ not pretended to be one.
 #         pins, datasheet url, local pdf, usd, verdict
 PART = dict
 
+# ⚠️ PRICES ARE A SNAPSHOT AND CARRY THEIR DATE. `usd1`/`usd10` are what Digi-Key
+# asked on the day in `quoted`, and a number in a repository does not get cheaper
+# or go out of stock on its own. They are here to size an order, not to be
+# believed a year from now — tools/order.py writes an upload file precisely so
+# the live figures come from the distributor rather than from this file.
+
 BOM = {
     "U1": PART(
+        dk="1490-NRF54L15-QFAA-R-ND", usd1=2.72, usd10=2.72, dk_stock=None, quoted="2026-09-01",
         mpn="NRF54L15-QFAA-R",
         manufacturer="Nordic Semiconductor",
         description="Cortex-M33 wireless SoC, Bluetooth LE, 1.5 MB NVM, 256 kB RAM",
@@ -47,6 +54,7 @@ BOM = {
                 "so inference happens inside a window that existed anyway.",
     ),
     "U2": PART(
+        dk="1891-A121-001-T&RCT-ND", usd1=16.74, usd10=13.21, dk_stock=15598, quoted="2026-09-01",
         mpn="A121-001-T&R",
         manufacturer="Acconeer",
         description="60 GHz pulsed coherent radar, antenna in package, SPI",
@@ -61,6 +69,7 @@ BOM = {
                 "sensor goes where its antenna has to be.",
     ),
     "U6": PART(
+        dk="1891-A121-001-T&RCT-ND", usd1=16.74, usd10=13.21, dk_stock=15598, quoted="2026-09-01",
         mpn="A121-001-T&R",
         manufacturer="Acconeer",
         description="60 GHz radar, second viewpoint at the other end of the insert",
@@ -73,6 +82,7 @@ BOM = {
                 "note, because those holes have to be filled and capped.",
     ),
     "U3": PART(
+        dk="1490-NPM1300-QEAA-R7CT-ND", usd1=1.66, usd10=1.66, dk_stock=None, quoted="2026-09-01",
         mpn="NPM1300-QEAA-R7",
         manufacturer="Nordic Semiconductor",
         description="PMIC: 800 mA charger with NTC/JEITA, fuel gauge, 2 bucks, 2 LDOs",
@@ -86,6 +96,7 @@ BOM = {
                 "this part does that in hardware.",
     ),
     "U11": PART(
+        dk="296-38885-1-ND", usd1=4.09, usd10=3.09, dk_stock=5882, quoted="2026-09-01",
         mpn="BQ51013BRHLR", manufacturer="Texas Instruments",
         description="5 W Qi receiver: synchronous rectifier, WPC control, 5 V out",
         package="VQFN-20 (RHL)", body=(4.5, 3.5, 0.9), pitch=0.5, pins=20,
@@ -103,8 +114,9 @@ BOM = {
                 "down within a second.",
     ),
     "L_COIL": PART(
-        mpn="760308103305", manufacturer="Würth Elektronik",
-        description="WE-WPCC Qi receiver coil, 8.8 µH, litz wire with shield",
+        dk="732-5257-ND", usd1=6.13, usd10=5.93, dk_stock=0, quoted="2026-09-01",
+        mpn="760308103202", manufacturer="Würth Elektronik",
+        description="WE-WPCC Qi receiver coil, 12 µH, 48 mm, litz wire with shield",
         package="coil", body=(44.0, 45.0, 0.72), pitch=None, pins=2,
         datasheet="https://www.we-online.com/en/components/products/WE-WPCC-RECEIVER",
         pdf=None, usd=None, stock="commodity",
@@ -118,6 +130,7 @@ BOM = {
                 "datasheet figure, which moves Cs by the same.",
     ),
     "BT1": PART(
+        dk="1908-LP523450JU+PCM+JSTPHR-370MM-ND", usd1=11.71, usd10=11.71, dk_stock=507, quoted="2026-09-01",
         mpn="LP523450JU+PCM+JST PHR-3 70MM", manufacturer="Jauch Quartz",
         description="Li-Po 3.7 V 950 mAh pouch, PCM + 10k NTC, JST PHR-3 harness",
         package="pouch 53.0 x 34.5 x 5.4 mm", body=(53.0, 34.5, 5.8), pitch=2.0,
@@ -148,6 +161,7 @@ BOM = {
                 "thermal model's bad answer rested on.",
     ),
     "U4": PART(
+        dk="828-1091-1-ND", usd1=4.23, usd10=3.62, dk_stock=65121, quoted="2026-09-01",
         mpn="BMI270", manufacturer="Bosch Sensortec",
         description="6-axis IMU, 14-pin LGA, I2C",
         package="LGA-14", body=(2.5, 3.0, 0.83), pitch=0.5, pins=14,
@@ -177,6 +191,7 @@ BOM = {
                 "existed nowhere. It is now figure 4-1 of SCHS209D.",
     ),
     "U8": PART(
+        dk="296-50014-1-ND", usd1=1.62, usd10=1.185, dk_stock=1173, quoted="2026-09-01",
         mpn="TLV9064IPWR", manufacturer="Texas Instruments",
         description="Quad RRIO op-amp, 1.8-5.5 V — four of the six taxel amplifiers",
         package="TSSOP-14", body=(4.4, 5.0, 1.2), pitch=0.65, pins=14,
@@ -187,6 +202,7 @@ BOM = {
                 "press, or real ones read 83% light.",
     ),
     "U9": PART(
+        dk="296-50014-1-ND", usd1=1.62, usd10=1.185, dk_stock=1173, quoted="2026-09-01",
         mpn="TLV9064IPWR", manufacturer="Texas Instruments",
         description="Quad RRIO op-amp — the remaining two amplifiers",
         package="TSSOP-14", body=(4.4, 5.0, 1.2), pitch=0.65, pins=14,
@@ -311,7 +327,8 @@ BOM = {
 # end of it.
 OPTICS = {
     "U10": PART(
-        mpn="VL53L1X", manufacturer="STMicroelectronics",
+        dk="497-17764-1-ND", usd1=6.63, usd10=5.72, dk_stock=15762, quoted="2026-09-01",
+        mpn="VL53L1CXV0FY/1", manufacturer="STMicroelectronics",
         description="Time-of-flight ranging sensor, 940 nm, I2C, LGA-12",
         package="LGA-12", body=(4.9, 2.5, 1.56), pitch=0.8, pins=12,
         datasheet="https://www.st.com/resource/en/datasheet/vl53l1x.pdf",
@@ -346,6 +363,7 @@ OPTICS = {
         verdict="OK — six ways is the camera's whole interface.",
     ),
     "CAM": PART(
+        dk="", usd1=29.99, usd10=29.99, dk_stock=None, quoted="2026-09-01",
         mpn="B0435 (Arducam Mega 3MP NoIR)", manufacturer="Arducam",
         description="3 MP SPI camera module, M12 lens, no IR-cut filter",
         package="module", body=(0, 0, 0), pitch=None, pins=6,

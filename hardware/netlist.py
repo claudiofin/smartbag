@@ -644,8 +644,8 @@ _PASSIVES = [
     # there. They belong to the COIL, not to the chip — change the coil and both
     # change. ⚠️ C0G, not X7R: a capacitor whose value walks with applied
     # voltage detunes the tank, and this one carries the full coil current.
-    ("C80", "270n C0G (Cs)", "C_0603_1608Metric", "QI_COIL_A", "QI_AC1", 24.0, 4.0),
-    ("C81", "2n7 C0G (Cd)", "C_0402_1005Metric", "QI_AC1", "QI_AC2", 26.5, 4.0),
+    ("C80", "220n C0G (Cs)", "C_0603_1608Metric", "QI_COIL_A", "QI_AC1", 24.0, 4.0),
+    ("C81", "2n2 C0G (Cd)", "C_0402_1005Metric", "QI_AC1", "QI_AC2", 26.5, 4.0),
     ("C82", "10n X7R", "C_0402_1005Metric", "QI_BOOT1", "QI_AC1", 24.0, -3.0),
     ("C83", "10n X7R", "C_0402_1005Metric", "QI_BOOT2", "QI_AC2", 26.0, -3.0),
     # ⚠️ The overvoltage clamp. Above 15 V on RECT both switches close and these

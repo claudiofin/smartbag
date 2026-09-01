@@ -95,6 +95,7 @@ grep -E "Found .*(violations|unconnected pads|Footprint errors)" \
 echo "== stats =="
 kicad-cli pcb export stats --output "$OUT/board-stats.txt" "$BOARD" >/dev/null 2>&1 || true
 
+python3 tools/order.py 5 | tail -2
 python3 tools/fab_notes.py > "$OUT/README-FAB.md"
 echo "  README-FAB.md"
 

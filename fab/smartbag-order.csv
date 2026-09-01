@@ -1,0 +1,28 @@
+Manufacturer Part Number,Digi-Key Part Number,Quantity,Customer Reference,Description
+NRF54L15-QFAA-R,1490-NRF54L15-QFAA-R-ND,7,U1,"Cortex-M33 wireless SoC, Bluetooth LE, 1.5 MB NVM, 256 kB RAM"
+A121-001-T&R,1891-A121-001-T&RCT-ND,7,U2,"60 GHz pulsed coherent radar, antenna in package, SPI"
+A121-001-T&R,1891-A121-001-T&RCT-ND,7,U6,"60 GHz radar, second viewpoint at the other end of the insert"
+NPM1300-QEAA-R7,1490-NPM1300-QEAA-R7CT-ND,7,U3,"PMIC: 800 mA charger with NTC/JEITA, fuel gauge, 2 bucks, 2 LDOs"
+BQ51013BRHLR,296-38885-1-ND,7,U11,"5 W Qi receiver: synchronous rectifier, WPC control, 5 V out"
+760308103202,732-5257-ND,7,L_COIL,"WE-WPCC Qi receiver coil, 12 µH, 48 mm, litz wire with shield"
+LP523450JU+PCM+JST PHR-3 70MM,1908-LP523450JU+PCM+JSTPHR-370MM-ND,7,BT1,"Li-Po 3.7 V 950 mAh pouch, PCM + 10k NTC, JST PHR-3 harness"
+BMI270,828-1091-1-ND,7,U4,"6-axis IMU, 14-pin LGA, I2C"
+DRV5032FBDBZR,,7,U5,"Omnipolar digital Hall latch, 1.65-5.5 V, ~540 nA average"
+CD74HC4067SM96,,7,U7,"16:1 analog multiplexer, the FSR column selector"
+TLV9064IPWR,296-50014-1-ND,7,U8,"Quad RRIO op-amp, 1.8-5.5 V — four of the six taxel amplifiers"
+TLV9064IPWR,296-50014-1-ND,7,U9,Quad RRIO op-amp — the remaining two amplifiers
+ABM8-32.000MHZ-B2-T,,7,Y1,"32 MHz crystal, Cl = 8 pF — the SoC's HFXO"
+ABM8-24.000MHZ-B2-T,,7,Y2,24 MHz crystal for the first radar
+ABM8-24.000MHZ-B2-T,,7,Y3,24 MHz crystal for the second radar
+FH12-12S-0.5SH(55),,12,J1,"FFC connector, 12 way, 0.5 mm — the optics flex"
+SI2302CDS-T1-GE3,,7,Q1,Logic-level N-channel MOSFET — the illuminator switch
+ABS07-32.768KHZ-9-T,,7,Y4,"32.768 kHz crystal, Cl = 9 pF — the low-power timebase"
+FH12-24S-0.5SH(55),,7,J4,"FFC connector, 24 way — the taxel matrix"
+S3B-PH-K-S(LF)(SN),,7,J2,PH series 3-pin 2.0 mm side-entry header — the cell
+SM02B-SRSS-TB(LF)(SN),,7,J3,SH series 2-pin header — the Qi receiver coil
+SM04B-SRSS-TB(LF)(SN),,7,J5,SH series 4-pin header — SWD
+2450AT43F0100E,,7,AE1,2.4 GHz ceramic chip antenna
+VL53L1CXV0FY/1,497-17764-1-ND,7,U10,"Time-of-flight ranging sensor, 940 nm, I2C, LGA-12"
+VSMY1850X01,,7,D1..D4,"850 nm infrared emitter, 0805, Vf 1.65 V at 100 mA"
+SM06B-SRSS-TB(LF)(SN),,12,J11,SH series 6-pin 1.0 mm header — the camera module
+B0435 (Arducam Mega 3MP NoIR),,7,CAM,"3 MP SPI camera module, M12 lens, no IR-cut filter"

@@ -1,5 +1,5 @@
 ** Drc report for smartbag_core.kicad_pcb **
-** Created on 2026-09-01T16:55:26 **
+** Created on 2026-09-01T18:39:11 **
 ** Report includes: Errors, Warnings, Exclusions **
 
 ** Found 3 DRC violations **
@@ -17,7 +17,7 @@
 [unconnected_items]: Missing connection between items
     Local override; error
     @(192.2000 mm, 145.0500 mm): Track [VDD_3V3] on F.Cu, length 0.4000 mm
-    @(190.7000 mm, 149.4000 mm): Track [VDD_3V3] on F.Cu, length 0.3500 mm
+    @(191.0500 mm, 149.4000 mm): Pad 10 [VDD_3V3] of U1 on F.Cu
 
 ** Found 0 Footprint errors **
 

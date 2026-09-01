@@ -121,7 +121,35 @@ land. Everything else on the board would have been happy with 0.2 mm.
   pad connection rather than thermal relief for that reason.
 - ⚠️ **The A121 is MSL 3 and takes at most two reflow passes.** Bake before use
   if the dry-pack has been open.
-- The board has **no fiducials**. ⛔ Add them before any real assembly quote —
-  0.4 mm-pitch placement without fiducials is not a service anyone will offer.
+- **6 fiducials**, two per rigid island, diagonally opposite. ⚠️ Two per
+  island and not three on the board: the flex tails let the islands move with
+  respect to each other, so a machine that has located one has learned nothing
+  about the next. Each has a 2 mm keepout on every layer — the footprint's own
+  soldermask opening — so no copper shows through the window.
 - No panelisation, no tooling holes, no test points.
+
+## Ordering
+
+| | |
+|---|---|
+| `smartbag-order.csv` | the named parts with manufacturer and Digi-Key numbers and **quantities for 5 boards plus 2 spares** — upload it to a distributor's BOM tool and the basket prices itself |
+| `smartbag-passives.csv` | the 29 passive values as a SPECIFICATION rather than part numbers |
+| `smartbag-bom.csv` | every line with its datasheet, for the record |
+
+⛔ **The passives are deliberately not part numbers.** All 84 of them are 0402
+commodity parts, and an assembly house fits those from its own reels; naming a
+particular Murata reel raises the price and adds lead time for no electrical
+reason. What has to be exact is the value, the tolerance, the dielectric and the
+voltage, and those are in the file.
+
+⚠️ **Two lines are not commodity and decide the schedule.** The Würth
+760308103202 receiver coil showed **zero stock** at Digi-Key when this was
+written — it is a catalogue part with a lead time and it is the only line here
+that has one, so it is the line to order first. The Jauch cell is stocked but is
+a lithium pouch: it ships under UN38.3 and some couriers will not carry it by
+air at all.
+
+⭐ **Prices in `hardware/bom.py` carry the date they were taken** and are there to
+size an order, not to be believed later. A number in a repository does not go out
+of stock on its own.
 
