@@ -17,6 +17,7 @@ Usage:  python3 tools/check.py
 import ast
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -460,6 +461,38 @@ check("the A121 on the board has the library's 50 balls",
 _diff = [n for n in _lib_pads if _lib_pads[n] != _board_pads.get(n)]
 check("every ball matches name, position, size and layers",
       not _diff, f"{len(_diff)} differ: {_diff[:4]}")
+
+# ⛔ A PIN MAP THAT HAS DRIFTED IS A BOARD AND AN IMAGE THAT DISAGREE, and the
+# only symptom is a peripheral that does not answer. firmware/target/src/
+# sb_pinmap.h is generated from netlist.py; if regenerating it would change
+# anything, somebody has edited one of the two and not the other.
+print("\n── the firmware's pin map is still the schematic's")
+
+_pm = os.path.join(ROOT, "firmware", "target", "src", "sb_pinmap.h")
+_ov = os.path.join(ROOT, "firmware", "target", "boards", "smartbag.overlay")
+_before = {f: open(f).read() for f in (_pm, _ov) if os.path.exists(f)}
+subprocess.run([sys.executable, os.path.join(ROOT, "hardware",
+                                             "generate_pinmap.py")],
+               capture_output=True)
+_pm_ok = os.path.exists(_pm) and _before.get(_pm) == open(_pm).read()
+_ov_ok = os.path.exists(_ov) and _before.get(_ov) == open(_ov).read()
+check("sb_pinmap.h matches netlist.py", _pm_ok,
+      "" if _pm_ok else "regenerating it changes it — one of the two was edited")
+check("the devicetree overlay matches the netlist and the cell", _ov_ok,
+      "" if _ov_ok else "regenerating it changes it — one of the two was edited")
+
+# ⚠️ And it has to compile. The generator writes C; a designator with a stray
+# character in it produces a header that looks fine and fails on the target,
+# which is the worst place to find out.
+_probe = """#include "sb_pinmap.h"
+int main(void){return sb_pinmap[SB_PIN_HALL].port+sb_cs_pins[0].pin
+ +sb_mux_sel[0].pin+sb_adc_rows[5].pin+SB_MUX_EN_PIN+SB_SCK_PIN;}"""
+_cc = subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
+                      "-I", os.path.join(ROOT, "firmware"),
+                      "-I", os.path.dirname(_pm), "-fsyntax-only", "-x", "c", "-"],
+                     input=_probe, text=True, capture_output=True)
+check("the generated pin map compiles with -Werror", _cc.returncode == 0,
+      _cc.stderr.strip().splitlines()[0] if _cc.stderr.strip() else "")
 
 print("\n── the pictures are not older than what they show")
 # ⛔ NOTHING HAS EVER CHECKED THIS, and it is the easiest way for a repository to

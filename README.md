@@ -25,7 +25,7 @@ been built.
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
 | board | **111 footprints, four layers, routed.** DRC: **0 errors, 0 footprint errors**, schematic parity clean. **4 items of ~500 still need finishing by hand** — see [Routing](#routing). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **23 of 23 agree** — see [The bill of materials](#the-bill-of-materials). |
-| firmware | the wake-up chain, the ledger, the taxel driver, the GATT layer, **the charge policy and the sensor bring-up** — **690 assertions**, `-Werror`. What is left is nine HAL functions and a vendor BLE stack, and they are named. |
+| firmware | the wake-up chain, the ledger, the taxel driver, the GATT layer, the charge policy and the sensor bring-up — **378 assertions**, `-Werror`. ⭐ **And a target build now exists**: [`firmware/target/`](firmware/target/) is an nRF Connect SDK app with the nine HAL functions written, a pin map **generated from the netlist**, and a devicetree generated from the cell's datasheet. ⚠️ **It has never been compiled** — there is no NCS on this machine. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). ⚠️ It now has to run on a Cortex-M33, not an NPU. |
 | app | **written and running** — [`app/`](app/), tested against the firmware's own bytes. No native build; it is a web app. |
