@@ -123,24 +123,25 @@ def clearance_pairs(path):
 
 
 def drop_dangling(path):
-    """Delete fanout vias the router never used. Returns how many.
+    """Remove fanout vias nothing ever used. Returns how many.
 
-    ⛔ A VIA THAT GOES NOWHERE IS A DRILL HIT SOMEBODY PAYS FOR. qfn_fanout()
-    puts one outside every signal pin of the dense packages so the router has
-    three layers to start on instead of one — which took the board from ten
-    unconnected pads to one — and the router does not need all of them. Nine
-    were left connected on a single layer, and a fabrication package that ships
-    them is asking for holes nothing uses.
-
-    ⚠️ Vias only. DRC also reports dangling TRACKS, and those are not the same
-    thing: a track stub is usually the near end of a connection that did not
-    finish, and deleting it removes the evidence of what is missing.
+    ⛔ AND NOT THE ONES THAT ARE A PIN'S ONLY WAY OFF THE TOP LAYER. That
+    exception is the whole of this function's history. generate_pcb.py puts a
+    via 0.35 mm outside every signal pad of the dense QFNs so a signal can leave
+    the package on F.Cu and immediately drop; the autorouter uses most of them
+    and leaves the rest looking unused. They are not unused — they are the only
+    thing standing between a pad and the other three layers.
+    ⚠️ Removing two of them stranded U1's pins 10 and 22 on F.Cu inside a 0.4 mm
+    escape row, and every router in this repository then reported, correctly,
+    that there was no way out. Three tools and several hours went into the
+    consequences of a tidy-up.
     """
-    tmp = tempfile.NamedTemporaryFile(suffix=".rpt", delete=False).name
-    subprocess.run(["kicad-cli", "pcb", "drc", "--severity-all", "-o", tmp,
+    v, _u, _pairs = drc(path)
+    report = tempfile.NamedTemporaryFile(suffix=".rpt", delete=False).name
+    subprocess.run(["kicad-cli", "pcb", "drc", "--severity-all", "-o", report,
                     path], capture_output=True)
-    text = open(tmp).read()
-    os.unlink(tmp)
+    text = open(report).read()
+    os.unlink(report)
     pts = []
     for block in text.split("[via_dangling]")[1:]:
         m = re.search(r"@\((-?[\d.]+) mm, (-?[\d.]+) mm\)", block[:200])
@@ -149,19 +150,31 @@ def drop_dangling(path):
     if not pts:
         return 0
     board = pcbnew.LoadBoard(path)
-    doomed = []
+    doomed, spared = [], 0
     for t in list(board.GetTracks()):
         if t.Type() != pcbnew.PCB_VIA_T:
             continue
         p = t.GetPosition()
-        if any(abs(p.x / MM - x) < 0.02 and abs(p.y / MM - y) < 0.02
-               for x, y in pts):
-            doomed.append(t)
+        if not any(abs(p.x / MM - x) < 0.02 and abs(p.y / MM - y) < 0.02
+                   for x, y in pts):
+            continue
+        # ⭐ Is this via the only multi-layer access of a pad that has none?
+        # If the island it sits on contains a pad and no other via, it is.
+        net = t.GetNetCode()
+        island = _island_tracks(board, net, (p.x / MM, p.y / MM))
+        pads = [i for i in island if i.Type() == pcbnew.PCB_PAD_T]
+        vias = [i for i in island if i.Type() == pcbnew.PCB_VIA_T]
+        if pads and len(vias) <= 1:
+            spared += 1
+            continue
+        doomed.append(t)
     for t in doomed:
         board.Remove(t)
     if doomed:
         pcbnew.ZONE_FILLER(board).Fill(board.Zones())
         board.Save(path)
+    if spared:
+        print(f"  {spared} dangling via(s) kept: a pad's only escape")
     return len(doomed)
 
 
@@ -752,6 +765,401 @@ def main(path, rounds=4):
     print(f"done: {v} violations, {u} unconnected, {total} joined")
 
 
+def _island_of(board, net, at):
+    """Every point of the piece of `net` that contains the item at `at`."""
+    cn = board.GetConnectivity()
+    seed, best = None, None
+    for t in board.GetTracks():
+        if t.GetNetCode() != net:
+            continue
+        for e in ((t.GetPosition(),) if t.Type() == pcbnew.PCB_VIA_T
+                  else (t.GetStart(), t.GetEnd())):
+            d = math.hypot(e.x / MM - at[0], e.y / MM - at[1])
+            if best is None or d < best:
+                best, seed = d, t
+    for f in board.GetFootprints():
+        for p in f.Pads():
+            if p.GetNetCode() != net:
+                continue
+            c = p.GetCenter()
+            d = math.hypot(c.x / MM - at[0], c.y / MM - at[1])
+            if best is None or d < best:
+                best, seed = d, p
+    if seed is None or best > 0.05:
+        return None
+    pts = []
+    for it in cn.GetConnectedItems(seed):
+        ty = it.Type()
+        if ty == pcbnew.PCB_PAD_T:
+            ls = it.GetLayerSet().CuStack()
+            c = it.GetCenter()
+            pts.append((c.x / MM, c.y / MM, ls[0] if len(ls) == 1 else None))
+        elif ty == pcbnew.PCB_VIA_T:
+            p = it.GetPosition()
+            pts.append((p.x / MM, p.y / MM, None))
+        elif ty == pcbnew.PCB_TRACE_T:
+            L = it.GetLayer()
+            pts.append((it.GetStart().x / MM, it.GetStart().y / MM, L))
+            pts.append((it.GetEnd().x / MM, it.GetEnd().y / MM, L))
+    return pts or None
+
+
+def _island_tracks(board, net, at):
+    """The TRACK items of the piece of `net` containing the item at `at`.
+
+    ⛔ PROXIMITY IS NOT MEMBERSHIP, AND CONFUSING THE TWO WASTED A ROUND OF
+    THIS. The via has to land on the copper of the island you are coming FROM;
+    picking candidate points by "within 3 mm of that end" picks points on the
+    island you are trying to reach, because the two ends are a millimetre apart.
+    Every candidate was then a via placed on the far island, connected to
+    nothing new, and DRC correctly reported no improvement.
+    """
+    cn = board.GetConnectivity()
+    seed, best = None, None
+    for t in board.GetTracks():
+        if t.GetNetCode() != net:
+            continue
+        for e in ((t.GetPosition(),) if t.Type() == pcbnew.PCB_VIA_T
+                  else (t.GetStart(), t.GetEnd())):
+            d = math.hypot(e.x / MM - at[0], e.y / MM - at[1])
+            if best is None or d < best:
+                best, seed = d, t
+    for f in board.GetFootprints():
+        for p in f.Pads():
+            if p.GetNetCode() != net:
+                continue
+            c = p.GetCenter()
+            d = math.hypot(c.x / MM - at[0], c.y / MM - at[1])
+            if best is None or d < best:
+                best, seed = d, p
+    if seed is None or best > 0.05:
+        return []
+    return list(cn.GetConnectedItems(seed))
+
+
+def _island_of_kind(board, net, at, kind):
+    return [it for it in _island_tracks(board, net, at) if it.Type() == kind]
+
+
+def nearest_ends(board, net, a, b):
+    """⛔ THE PAIR DRC NAMES IS NOT THE PAIR THAT HAS TO BE JOINED. KiCad reports
+    one REPRESENTATIVE item per disconnected island, so a net whose two halves
+    nearly touch under a package gets reported as a pad at one end of the board
+    and a track at the other — and the router is sent ten millimetres across the
+    most congested copper on the design when the answer is a via 0.35 mm away.
+    ⭐ These are the two ends that actually need joining, with their layers."""
+    ia, ib = _island_of(board, net, a), _island_of(board, net, b)
+    if not ia or not ib:
+        return None
+    best = None
+    for x1, y1, l1 in ia:
+        for x2, y2, l2 in ib:
+            d = math.hypot(x1 - x2, y1 - y2)
+            if best is None or d < best[0]:
+                best = (d, (round(x1, 4), round(y1, 4)),
+                        (round(x2, 4), round(y2, 4)), l1, l2)
+    if not best:
+        return None
+    return best[1], best[2], best[3], best[4], best[0]
+
+
+def net_breaks(path, netname, report=None):
+    """How many unconnected items DRC reports for ONE net.
+
+    ⛔ THE ONLY ACCEPTANCE TEST THAT CANNOT BE FOOLED, AND IT TOOK THREE WRONG
+    ONES TO GET HERE. "Fewer unconnected pads on the board" is wrong: KiCad
+    reports one ratsnest line per net, so closing one of a net's two breaks
+    changes nothing and a correct repair gets thrown away. "The pair DRC named
+    is gone" is wrong: KiCad picks a different representative item every run, so
+    that is always true and this file once accepted twelve vias that connected
+    nothing. Counting islands with GetConnectedItems is wrong too — it reported
+    two pieces where DRC clearly saw three.
+    ⭐ Asking DRC how many breaks THIS net has left is the same question, put to
+    the same referee that decides whether the board ships.
+    """
+    tmp = report or tempfile.NamedTemporaryFile(suffix=".rpt", delete=False).name
+    subprocess.run(["kicad-cli", "pcb", "drc", "--schematic-parity",
+                    "--severity-error", "-o", tmp, path], capture_output=True)
+    text = open(tmp).read()
+    n = 0
+    for block in text.split("[unconnected_items]")[1:]:
+        if f"[{netname}]" in block[:400]:
+            n += 1
+    v = int(re.search(r"Found (\d+) DRC violations", text).group(1))
+    if report is None:
+        os.unlink(tmp)
+    return n, v
+
+
+def _clear_hit(x, y, r, board, net, layer=None):
+    """Does a circle of radius r at (x, y) touch another net on `layer`?"""
+    for t in board.GetTracks():
+        if t.GetNetCode() == net:
+            continue
+        if t.Type() == pcbnew.PCB_VIA_T:
+            p = t.GetPosition()
+            if math.hypot(p.x / MM - x, p.y / MM - y) < r + 0.125:
+                return True
+            continue
+        if layer is not None and t.GetLayer() != layer:
+            continue
+        ax, ay = t.GetStart().x / MM, t.GetStart().y / MM
+        bx, by = t.GetEnd().x / MM, t.GetEnd().y / MM
+        dx, dy = bx - ax, by - ay
+        if dx or dy:
+            u = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy)
+                             / (dx * dx + dy * dy)))
+            px, py = ax + u * dx, ay + u * dy
+        else:
+            px, py = ax, ay
+        if math.hypot(x - px, y - py) < r + t.GetWidth() / MM / 2:
+            return True
+    for f in board.GetFootprints():
+        for pad in f.Pads():
+            if pad.GetNetCode() == net:
+                continue
+            if layer is not None and not pad.IsOnLayer(layer):
+                continue
+            bb = pad.GetBoundingBox()
+            if (bb.GetLeft() / MM - r <= x <= bb.GetRight() / MM + r
+                    and bb.GetTop() / MM - r <= y <= bb.GetBottom() / MM + r):
+                return True
+    return False
+
+
+def link_islands(path, project, netname, base_v):
+    """Close every break in one net with a via and a stub. Returns breaks left.
+
+    ⛔ NONE OF THE THREE CONNECTIONS THIS BOARD COULD NOT CLOSE WAS A ROUTING
+    PROBLEM. Every one was a net whose two halves end a millimetre apart on
+    DIFFERENT LAYERS: an In2 track finishing 1.2 mm from a pad on F.Cu, a B.Cu
+    track finishing exactly on an F.Cu pad. There is no path to find — the
+    straight line is obvious. What is missing is the via, and WHERE the via goes
+    is the whole question, because a through via is an obstacle on four layers
+    and the obvious spot always has somebody else's track under it.
+
+    ⚠️ AND THE CLEARANCE HAS TO BE THE NET'S OWN. An earlier version of this
+    search used 0.15 mm for everything — the Power class figure — against nets
+    that are Default at 0.10, and reported that there was nowhere to put a via
+    in a region where there plainly was. That is the same mistake rules_for()
+    was written to stop, made again two hundred lines below it.
+    """
+    _w, clear = rules_for(project, netname)
+    board = pcbnew.LoadBoard(path)
+    net = board.GetNetcodeFromNetname(netname)
+    if net == 0:
+        return 0
+    breaks, _v = net_breaks(path, netname)
+    pristine = path + ".link-backup"
+
+    for _round in range(6):
+        if breaks == 0:
+            break
+        board = pcbnew.LoadBoard(path)
+        _bv, _bu, pairs = drc(path)
+        mine = [p for p in pairs if p[2] == netname]
+        if not mine:
+            break
+        a0, b0, _n = mine[0]
+        near = nearest_ends(board, net, a0, b0)
+        # ⛔ A "GAP" OF ZERO ON ONE LAYER MEANS THE REFINEMENT FAILED, NOT THAT
+        # THE NET IS JOINED. It happens when both DRC representatives resolve to
+        # the same island — KiCad's connectivity query does not always give back
+        # the piece you asked about — and the search then hunts around a point
+        # that is not the problem. The reported pair is the fallback: cruder,
+        # and it is what actually closed FSR_R2.
+        if near and near[4] < 0.001 and near[2] == near[3]:
+            near = None
+        if not near:
+            a, b, la, lb, gap = a0, b0, None, None, math.hypot(
+                b0[0] - a0[0], b0[1] - a0[1])
+        else:
+            a, b, la, lb, gap = near
+
+        # ⭐ The via goes on ONE island's copper and the stub runs on the OTHER
+        # island's layer to its end. Anything else connects to only one of them.
+        # ⚠️ EVERY LAYER FOR THE STUB, NOT JUST THE FAR END'S. Constraining it
+        # to the destination end's layer looks right and is not: the far island
+        # may be a via, or may occupy several layers where the stub arrives, and
+        # the combination that actually merged FSR_R2 was a stub on the layer of
+        # the NEAR end. What must be constrained is where the via lands — on the
+        # source island's own copper — and DRC settles the rest.
+        plan = []
+        for src, dst in ((a, b), (b, a)):
+            # ⭐ The island the via must land on, not everything nearby.
+            pts = []
+            for t in _island_of_kind(board, net, src, pcbnew.PCB_TRACE_T):
+                p = (t.GetStart().x / MM, t.GetStart().y / MM)
+                q = (t.GetEnd().x / MM, t.GetEnd().y / MM)
+                if min(math.hypot(p[0] - dst[0], p[1] - dst[1]),
+                       math.hypot(q[0] - dst[0], q[1] - dst[1])) > 6.0:
+                    continue
+                n = max(1, int(math.hypot(q[0] - p[0], q[1] - p[1]) / 0.1))
+                for i in range(n + 1):
+                    u = i / n
+                    pts.append((p[0] + (q[0] - p[0]) * u,
+                                p[1] + (q[1] - p[1]) * u))
+            pts.sort(key=lambda P: math.hypot(P[0] - dst[0], P[1] - dst[1]))
+            if os.environ.get("MAZE_DEBUG"):
+                print(f"    [dbg] {netname}: {len(pts)} points on the island of "
+                      f"({src[0]:.3f},{src[1]:.3f}) toward "
+                      f"({dst[0]:.3f},{dst[1]:.3f})")
+            for vx, vy in pts[:200]:
+                if _clear_hit(vx, vy, 0.125 + clear, board, net):
+                    continue
+                if math.hypot(vx - dst[0], vy - dst[1]) < 0.01:
+                    plan.append(((vx, vy), None, dst))
+                    continue
+                n = max(2, int(math.hypot(dst[0] - vx, dst[1] - vy) / 0.05))
+                for dst_layer in LAYERS:
+                    if any(_clear_hit(vx + (dst[0] - vx) * i / n,
+                                      vy + (dst[1] - vy) * i / n,
+                                      TRACK_W / 2 + clear, board, net, dst_layer)
+                           for i in range(n + 1)):
+                        continue
+                    plan.append(((vx, vy), dst_layer, dst))
+                if len(plan) >= 12:
+                    break
+            if len(plan) >= 12:
+                break
+
+        # ⭐ AND SOMETIMES NO NEW VIA IS NEEDED AT ALL, WHICH IS THE CASE THIS
+        # SEARCH KEPT MISSING. If the island already has a via near the gap it
+        # is already on every layer, and the whole repair is a track. VDD_3V3's
+        # U1.10 island has a fanout via 1.45 mm from the In2 run it has to reach
+        # — and this function spent every candidate trying to add a second via
+        # beside the first, in the one place on the board where there is no room
+        # for one.
+        if not plan:
+            for src, dst in ((a, b), (b, a)):
+                # ⚠️ The via has to be on the SOURCE island — "a via somewhere
+                # near" picked one 5 mm away on a different piece of the net and
+                # proposed a track from it, which connects nothing.
+                for t in _island_of_kind(board, net, src, pcbnew.PCB_VIA_T):
+                    p = (t.GetPosition().x / MM, t.GetPosition().y / MM)
+                    if math.hypot(p[0] - dst[0], p[1] - dst[1]) > 6.0:
+                        continue
+                    n = max(2, int(math.hypot(dst[0] - p[0],
+                                              dst[1] - p[1]) / 0.05))
+                    for L in LAYERS:
+                        if any(_clear_hit(p[0] + (dst[0] - p[0]) * i / n,
+                                          p[1] + (dst[1] - p[1]) * i / n,
+                                          TRACK_W / 2 + clear, board, net, L)
+                               for i in range(n + 1)):
+                            continue
+                        plan.append((p, L, dst, True))
+            plan = [(v, l, d, True) for v, l, d, *_ in plan]
+
+        # ⭐ AND IF NEITHER END HAS ROOM, JOIN THE ISLANDS SOMEWHERE ELSE. The
+        # two ends DRC points at are where the gap is NARROWEST, which on a
+        # dense board is also where there is least room — VDD_3V3's 1.2 mm gap
+        # is under a QFN48 with thirty-five escapes through it. But an island is
+        # not a point: it runs somewhere, and a via on one island can reach any
+        # part of the other. A track between a via that already exists and a
+        # point on the far island's copper is one segment, no new hole, and it
+        # merges them just as well.
+        if not plan:
+            for src, dst_pt in ((a, b), (b, a)):
+                vias = _island_of_kind(board, net, src, pcbnew.PCB_VIA_T)
+                far = []
+                for t in _island_of_kind(board, net, dst_pt, pcbnew.PCB_TRACE_T):
+                    p = (t.GetStart().x / MM, t.GetStart().y / MM)
+                    q = (t.GetEnd().x / MM, t.GetEnd().y / MM)
+                    n = max(1, int(math.hypot(q[0] - p[0], q[1] - p[1]) / 0.25))
+                    for i in range(n + 1):
+                        u = i / n
+                        far.append((p[0] + (q[0] - p[0]) * u,
+                                    p[1] + (q[1] - p[1]) * u))
+                for v in vias:
+                    vp = (v.GetPosition().x / MM, v.GetPosition().y / MM)
+                    cand = sorted(far, key=lambda P: math.hypot(P[0] - vp[0],
+                                                                P[1] - vp[1]))
+                    for P in cand[:40]:
+                        d = math.hypot(P[0] - vp[0], P[1] - vp[1])
+                        if d < 0.05 or d > 8.0:
+                            continue
+                        n = max(2, int(d / 0.05))
+                        for L in LAYERS:
+                            if any(_clear_hit(vp[0] + (P[0] - vp[0]) * i / n,
+                                              vp[1] + (P[1] - vp[1]) * i / n,
+                                              TRACK_W / 2 + clear, board, net, L)
+                                   for i in range(n + 1)):
+                                continue
+                            plan.append((vp, L, P, True))
+                            break
+                        if len(plan) >= 8:
+                            break
+                    if len(plan) >= 8:
+                        break
+
+        if not plan:
+            print(f"  {netname}: no via and stub fits within 3 mm "
+                  f"(gap {gap:.2f} mm, clearance {clear:.2f})")
+            break
+
+        shutil.copy(path, pristine)
+        won = False
+        for entry in plan:
+            (vx, vy), layer, dst = entry[0], entry[1], entry[2]
+            reuse = len(entry) > 3 and entry[3]
+            trial = pcbnew.LoadBoard(path)
+            if not reuse:
+                v = pcbnew.PCB_VIA(trial)
+                v.SetPosition(pcbnew.VECTOR2I(int(vx * MM), int(vy * MM)))
+                v.SetWidth(int(0.25 * MM))
+                v.SetDrill(int(0.10 * MM))
+                v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
+                v.SetNetCode(net)
+                trial.Add(v)
+            if layer is not None:
+                t = pcbnew.PCB_TRACK(trial)
+                t.SetStart(pcbnew.VECTOR2I(int(vx * MM), int(vy * MM)))
+                t.SetEnd(pcbnew.VECTOR2I(int(dst[0] * MM), int(dst[1] * MM)))
+                t.SetWidth(int(TRACK_W * MM))
+                t.SetLayer(layer)
+                t.SetNetCode(net)
+                trial.Add(t)
+            pcbnew.ZONE_FILLER(trial).Fill(trial.Zones())
+            trial.Save(path)
+            nb, nv = net_breaks(path, netname)
+            if os.environ.get("MAZE_DEBUG"):
+                print(f"    [dbg] via ({vx:.3f},{vy:.3f}) "
+                      f"{'in place' if layer is None else trial.GetLayerName(layer)}"
+                      f" -> {nb} breaks (was {breaks}), {nv} viol (base {base_v})")
+            if nb < breaks and nv <= base_v:
+                where = "in place" if layer is None else trial.GetLayerName(layer)
+                how = ("a track from the via it already had"
+                       if reuse else "a via was missing, not a route")
+                print(f"  {netname}: {how} — ({vx:.3f}, {vy:.3f}) {where}; "
+                      f"{breaks} -> {nb} breaks")
+                breaks = nb
+                won = True
+                break
+            shutil.copy(pristine, path)
+        os.unlink(pristine)
+        if not won:
+            print(f"  {netname}: {len(plan)} candidates, DRC refused every one")
+            break
+    return breaks
+
+
+def finish_layer_changes(path, project=None):
+    """Close every net whose halves only need a layer change."""
+    project = project or os.path.splitext(path)[0] + ".kicad_pro"
+    v0, u0, pairs = drc(path)
+    nets = sorted({p[2] for p in pairs})
+    if not nets:
+        print("nothing open")
+        return 0
+    print(f"start: {v0} violations, {u0} unconnected, "
+          f"nets open: {', '.join(nets)}")
+    for netname in nets:
+        link_islands(path, project, netname, v0)
+    v, u, _ = drc(path)
+    print(f"done: {v} violations, {u} unconnected")
+    return u
+
+
 def _pass(path):
     base_v, base_u, pairs = drc(path)
     print(f"start: {base_v} violations, {base_u} unconnected, "
@@ -880,7 +1288,9 @@ def _pass(path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 2 and sys.argv[1] == "--rip":
+    if len(sys.argv) > 2 and sys.argv[1] == "--link":
+        finish_layer_changes(sys.argv[2])
+    elif len(sys.argv) > 2 and sys.argv[1] == "--rip":
         print(rip_offenders(sys.argv[2]))
     elif len(sys.argv) > 2 and sys.argv[1] == "--tidy":
         print(drop_dangling(sys.argv[2]))
