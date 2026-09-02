@@ -773,8 +773,24 @@ def scene_section(m, dist=1.38):
     # ⭐ A quarter that retracts takes its handle with it. Full width, front half
     # only: the front strap goes entirely, the back one keeps the wall it is
     # attached to and stays whole.
+    # ⛔ AND THE BACK HANDLE HAD TO GO TOO, WHICH IS THE THIRD VERSION OF THIS.
+    # Version one did not cut the handles at all and the front strap ran through
+    # the opening. Version two cut them with the section and left one sliced in
+    # mid-air. Version three — a box spanning the full width and the front half
+    # — removed the front strap and kept the back one, which is PHYSICALLY
+    # RIGHT: the wall it is sewn to is still there.
+    #
+    # ⚠️ And it still reads as wrong, because from the camera that explains this
+    # product the back strap arcs straight across the mouth. The eye does not
+    # know it is behind the opening; it sees a leather loop lying over the one
+    # thing the render exists to show. Being correct about geometry is not the
+    # same as being correct about the picture.
+    #
+    # ⭐ So a bag that is cut open has no handles at all. They are what hero.png
+    # and the closed shots are for; here they cost the view of the inside and
+    # buy nothing. The box is the whole bag.
     handles = load_stl("bag_handles", m["leather"])
-    section_cut([handles], (0.0, -0.16, 0.20), (0.60, 0.30, 0.30))
+    section_cut([handles], (0.0, 0.0, 0.20), (0.90, 0.90, 0.40))
     load_stl("battery", m["lipo"], Z_INSERT)
     load_stl("qi_coil", m["copper"], Z_INSERT - 6)
     load_stl("insert_dividers", m["microfibre_dark"], Z_INSERT)

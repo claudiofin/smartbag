@@ -861,6 +861,40 @@ _SHOWS = {
     "media/smartbag_sequence.mp4": ["render/animation.py", "render/scenes.py",
                                     "dimensions.py"],
 }
+# ⛔ A FILM IS NOT AS NEW AS ITS OWN TIMESTAMP, AND THIS CHECK BELIEVED IT WAS.
+# render/build_video.py assembles the finished films out of PNG frames that
+# Blender rendered earlier; re-running it re-encodes stale frames into a brand
+# new mp4, and every date on disk then says the film is current. It happened:
+# the stills were re-rendered with a fix, the films were rebuilt an hour later
+# from yesterday's frames, and this test passed on two videos showing the wrong
+# board and a handle that had been removed.
+#
+# ⭐ So a film is only as new as its OLDEST frame. render/anim/ is gitignored —
+# the frames are two gigabytes of intermediate — but they are on disk wherever
+# the films were built, and where they are not, the film cannot be judged and
+# says so instead of passing.
+_FRAMES = {
+    "media/smartbag.mp4": ["opening", "exploded", "scanning"],
+    "media/smartbag_sequence.mp4": ["unzip", "object_drop", "scanning"],
+    "media/smartbag_discovery.mp4": ["unzip_v", "object_drop_v"],
+}
+
+
+def _oldest_frame(shots):
+    """The mtime of the oldest frame any of these shots holds, or None."""
+    oldest = None
+    for shot in shots:
+        d = os.path.join(ROOT, "render", "anim", shot)
+        if not os.path.isdir(d):
+            return None
+        for f in os.listdir(d):
+            if not f.endswith(".png"):
+                continue
+            t = os.path.getmtime(os.path.join(d, f))
+            oldest = t if oldest is None else min(oldest, t)
+    return oldest
+
+
 _stale = []
 for _art, _srcs in _SHOWS.items():
     _ap = os.path.join(ROOT, _art)
@@ -868,6 +902,13 @@ for _art, _srcs in _SHOWS.items():
         _stale.append(f"{_art} (missing)")
         continue
     _at = os.path.getmtime(_ap)
+    if _art in _FRAMES:
+        _fr = _oldest_frame(_FRAMES[_art])
+        if _fr is None:
+            _stale.append(f"{_art} (its frames are not on this machine — "
+                          f"cannot tell whether it is current)")
+            continue
+        _at = min(_at, _fr)
     for _s in _srcs:
         _sp = os.path.join(ROOT, _s)
         if os.path.exists(_sp) and os.path.getmtime(_sp) > _at:

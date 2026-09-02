@@ -80,7 +80,7 @@ FILMS = {
             # ⚠️ Four layers, not two. This caption was written when the board
             # was, and stayed behind when In1.Cu became a solid ground reference
             # and In2.Cu took most of the routing.
-            (220, 278, "the board", "196 × 20 mm strip · 4-layer rigid-flex"),
+            (220, 278, "the board", "196 × 20 mm strip · 6-layer rigid-flex"),
             (300, 358, "96 taxels", "the contents leave their imprint on the floor"),
             # ⛔ THIS SAID "two 60 GHz arrays — 2x4 patches, λ₀/2 pitch" AND
             # THAT DESIGN NO LONGER EXISTS. It was an invented transceiver with
