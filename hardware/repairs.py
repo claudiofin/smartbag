@@ -22,6 +22,7 @@ there now, which would be worse than the missing connection it was fixing.
 
 Usage:  <kicad-python> hardware/repairs.py <board>
 """
+import math
 import sys
 
 import pcbnew
@@ -55,7 +56,10 @@ REPAIRS = [
         # produced four clearance errors and closed the net, which is a worse
         # board than the one it started from.
         via_size=(0.25, 0.10),
-        track=("In2.Cu", (195.400, 151.300), (195.400, 150.319)),
+        # ⛔ B.Cu, NOT In2. In2 under this package carries I2C_SCL diagonally
+        # across exactly this millimetre, and a straight segment there crossed
+        # it. B.Cu here is ground pour, which the refill retracts around a track.
+        track=("B.Cu", (195.400, 151.300), (195.400, 150.319)),
     ),
     dict(
         net="FSR_R2",
@@ -67,13 +71,16 @@ REPAIRS = [
             "wrong."),
         expect_track=("B.Cu", (242.840, 146.850), (242.590, 146.600)),
         expect_pad=("R42", "1", (242.590, 146.600)),
-        # ⛔ THE VIA GOES IN THE PAD AND NOT BESIDE IT. Beside it was the first
-        # attempt: a via 0.35 mm away and a short track back to the pad, which
-        # is what a person draws — and on F.Cu that track crosses ADC2 and
-        # shorts two nets. There is nowhere on the surface for it to go. The
-        # B.Cu track already ends exactly on the pad, so the drop belongs where
-        # the copper already is.
-        via=(242.590, 146.600),
+        # ⛔ NOT IN THE PAD AND NOT BESIDE IT — WHEREVER IT FITS. In the pad was
+        # the second attempt and it came out 0.0012 mm from ADC4 on In2, because
+        # a through via is an obstacle on FOUR layers and the pad was clear on
+        # one. Beside it was the first attempt: a 0.35 mm track back to the pad,
+        # which on F.Cu crosses ADC2 and shorts two nets.
+        #
+        # ⭐ The B.Cu track already ends on the pad, so any point along it is
+        # electrically the same drop. Walk it and take the first place a via
+        # actually clears every layer.
+        search=((242.840, 146.450), (242.590, 146.600)),
         via_size=(0.25, 0.10),
     ),
 ]
@@ -114,6 +121,74 @@ def _has_pad(board, ref, num, at):
     return False
 
 
+def _clear_for_via(board, code, x, y, d_mm):
+    """Is a via of diameter `d_mm` at (x, y) clear of everything on every layer?
+
+    ⛔ A THROUGH VIA IS AN OBSTACLE ON FOUR LAYERS AND THE FIRST VERSION OF THIS
+    FILE CHECKED NONE OF THEM. Both repairs were a coordinate somebody read off
+    the board, and both landed on copper: the pin-22 drop crossed I2C_SCL on
+    In2, and the FSR_R2 via-in-pad came out 0.0012 mm from ADC4. Reading a
+    coordinate off a board tells you where the copper you are looking at is, not
+    where the copper you are not looking at is.
+
+    ⚠️ Clearance is taken as the widest netclass on this board, so this is
+    pessimistic by design: refusing a legal spot costs a search step, accepting
+    an illegal one costs a board.
+    """
+    r = d_mm / 2 + 0.15
+    for t in board.GetTracks():
+        if t.GetNetCode() == code:
+            continue
+        if t.Type() == pcbnew.PCB_VIA_T:
+            p = t.GetPosition()
+            if math.hypot(pcbnew.ToMM(p.x) - x, pcbnew.ToMM(p.y) - y) < r + 0.15:
+                return False
+            continue
+        a = (pcbnew.ToMM(t.GetStart().x), pcbnew.ToMM(t.GetStart().y))
+        b = (pcbnew.ToMM(t.GetEnd().x), pcbnew.ToMM(t.GetEnd().y))
+        if _point_to_seg(x, y, a, b) < r + pcbnew.ToMM(t.GetWidth()) / 2:
+            return False
+    for f in board.GetFootprints():
+        for pad in f.Pads():
+            if pad.GetNetCode() == code:
+                continue
+            bb = pad.GetBoundingBox()
+            if (pcbnew.ToMM(bb.GetLeft()) - r <= x <= pcbnew.ToMM(bb.GetRight()) + r
+                    and pcbnew.ToMM(bb.GetTop()) - r <= y
+                    <= pcbnew.ToMM(bb.GetBottom()) + r):
+                return False
+    return True
+
+
+def _point_to_seg(px, py, a, b):
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def find_drop(board, code, a, b, d_mm, step=0.05):
+    """The first point along a->b where a via clears every layer.
+
+    ⭐ THE DROP GOES WHERE THE COPPER ALREADY IS. The router brought this net to
+    within a fraction of a millimetre of its pad and stopped on the wrong layer;
+    the fix is a via somewhere on the copper it already laid, and which point on
+    it does not matter electrically. So instead of naming one and hoping, walk
+    the track and take the first place a via actually fits.
+    """
+    n = max(2, int(math.hypot(b[0] - a[0], b[1] - a[1]) / step) + 1)
+    for i in range(n + 1):
+        t = i / n
+        x = a[0] + (b[0] - a[0]) * t
+        y = a[1] + (b[1] - a[1]) * t
+        if _clear_for_via(board, code, x, y, d_mm):
+            return round(x, 4), round(y, 4)
+    return None
+
+
 def apply(path):
     board = pcbnew.LoadBoard(path)
     done, refused = 0, []
@@ -145,13 +220,23 @@ def apply(path):
             refused.append((r["net"], why_not))
             continue
 
+        d_mm, dr_mm = r.get("via_size", (0.30, 0.15))
+        if "search" in r:
+            a, b = r["search"]
+            found = find_drop(board, code, a, b, d_mm)
+            if found is None:
+                refused.append((r["net"],
+                                "no clear via spot anywhere along its own track"))
+                continue
+            r = dict(r, via=found)
+            print(f"    {r['net']}: drop found at ({found[0]:.3f}, {found[1]:.3f})")
+
         # ⚠️ Idempotent: running this twice must not stack two vias in one hole.
         vx, vy = r["via"]
         if not any(t.Type() == pcbnew.PCB_VIA_T and t.GetNetCode() == code
                    and abs(pcbnew.ToMM(t.GetPosition().x) - vx) < NEAR
                    and abs(pcbnew.ToMM(t.GetPosition().y) - vy) < NEAR
                    for t in board.GetTracks()):
-            d_mm, dr_mm = r.get("via_size", (0.30, 0.15))
             v = pcbnew.PCB_VIA(board)
             v.SetPosition(pcbnew.VECTOR2I(int(vx * MM), int(vy * MM)))
             v.SetWidth(int(d_mm * MM))

@@ -793,11 +793,15 @@ PLACEMENT = {
     "C43": (7.4, 0.8), "C44": (6.0, 6.5), "C45": (8.0, 6.5),
     "C46": (10.0, 6.5),
     "RT1": (13.0, -5.5), "R1": (15.0, -5.5),
-    # ⚠️ Shifted right by a millimetre and a half to leave the lane beside the
-    # PMIC's right edge free: pin 19 is VBAT, mid-edge, and its capacitor had
-    # nowhere nearer than three millimetres with R2 sitting in front of it.
-    "R2": (11.5, 0.5), "R3": (13.5, 0.5), "R4": (15.5, 0.5),
-    "R5": (17.5, 0.5), "R6": (19.5, 0.5),
+    # ⛔ THESE MOVED RIGHT ONCE AND IT COST SIX CONNECTIONS. The reason was
+    # C43, whose pad-to-pad distance to the PMIC's VBAT pin was 2.14 mm against
+    # a 2.00 mm rule — and shifting five resistors a millimetre and a half to
+    # win 0.14 mm on a bulk capacitor took the board from three unconnected
+    # items to nine. The rule was wrong, not the floorplan: see check.py, which
+    # now asks a reservoir capacitor and a high-frequency one different
+    # questions because they are doing different jobs.
+    "R2": (10.0, 0.5), "R3": (12.0, 0.5), "R4": (14.0, 0.5),
+    "R5": (16.0, 0.5), "R6": (18.0, 0.5),
     # ── band 4 (x +18..+26): the Qi receiver ────────────────────────────────
     # ⭐ Beside J3, because the coil's two wires and the resonant tank are the
     # one part of this board where centimetres of trace are a tuned element
@@ -864,27 +868,33 @@ FANOUT = ("U1", "U3", "U7")
 FANOUT_OUT_MM = 0.35
 FANOUT_VIA_MM = 0.25
 
-# ⛔ THE PROCESSOR'S FOUR DECOUPLING CAPACITORS GO ON THE BACK, UNDER THEIR PINS.
-# This is the one place on the board where "as close to the pin as possible" and
-# "leave the escape channel alone" cannot both be had on the top layer. U1 is a
-# QFN48 on a 0.4 mm pitch with thirty-five signals to get out; each edge escapes
-# through a row of vias 0.35 mm outside the pads, and everything on that edge
-# travels the gap between the package and that row. A 0402 in the gap closes it —
-# measured, not assumed: putting them there cost RADAR_IRQ_R and CS_RADAR_R,
-# two signals that had routed for months.
+# ⛔ NOTHING IS ON THE BACK, AND THAT WAS MEASURED RATHER THAN ASSUMED.
+# U1's four decoupling capacitors were put underneath it — the textbook answer
+# for a fine-pitch QFN on a dense board, shortest possible loop, and it frees the
+# top surface for the escapes. It made the board WORSE, twice, and the second
+# time explains the first.
 #
-# ⭐ UNDER THE PIN IS BOTH THE SHORTEST LOOP AND NO LOOP AT ALL FOR THE ROUTER.
-# The capacitor sits on B.Cu directly beneath its pad, its ground terminal is
-# already on the ground pour, and its supply terminal reaches the pin through a
-# via that goes straight up. Nothing crosses the surface. It is the standard
-# answer for a fine-pitch QFN on a dense board and every alternative here trades
-# decoupling quality for surface room.
+# ⛔ MOVING THEM TO THE BACK DID NOT FREE THE SURFACE, IT MOVED THE CONGESTION
+# TO B.Cu — WHICH IS WHERE THE ESCAPES LAND. The point of a fanout is that a
+# signal leaves the package on the top layer for 0.35 mm and then DROPS. On four
+# layers where In1 is an RF reference plane nobody routes on, the only routing
+# layers are F.Cu, In2 and B.Cu, and a QFN48 with thirty-five signals needs all
+# three of them under the package. Four capacitors on B.Cu under U1 sit exactly
+# where those signals arrive:
 #
-# ⚠️ IT COSTS A SECOND ASSEMBLY SIDE, and that is a real number rather than a
-# detail: the other 109 parts are on the front, so the back exists for these
-# four. On five prototypes it is one extra stencil; in volume it is a second
-# reflow pass on every board. fab/README-FAB.md says so.
-BACK = ("C4", "C7", "C8", "C9")
+#   old board, capacitors 3-6 mm from their pins      1 unconnected
+#   front, with the escape band kept clear            3
+#   back, with a via in each pad                      9
+#   back, with the router placing the vias           10  <- the whole SPI bus
+#
+# ⭐ SO THE ANSWER ON FOUR LAYERS IS THE FRONT, and the capacitors sit just
+# outside the escape via ring — 1.1 to 1.5 mm from their pads, which is inside
+# what the datasheet asks for and outside what the router needs. Sub-millimetre
+# decoupling AND a clear escape on this part wants a six-layer stack: a second
+# ground plane frees In2 for signals and the capacitors can go anywhere. That is
+# a cost decision, and it is written down here so it can be taken with the
+# numbers rather than from memory.
+BACK = ()
 
 DECOUPLE = {
     # the processor: one on each side of the QFN, which is what the datasheet
