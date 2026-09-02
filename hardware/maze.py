@@ -52,8 +52,11 @@ VIA_D, VIA_DRILL = 0.25, 0.10
 VIA_COST = 24                 # in cells: a via is worth about 2.4 mm of track
 MARGIN = 18.0                 # mm of room around the two endpoints to search in
 
-LAYERS = [pcbnew.F_Cu, pcbnew.In2_Cu, pcbnew.B_Cu]
-ALL_CU = [pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.B_Cu]
+# ⚠️ In1 and In4 are ground planes and are not routed on; In2 and In3 are
+# the signal pair between them. Four routable layers, not three.
+LAYERS = [pcbnew.F_Cu, pcbnew.In2_Cu, pcbnew.In3_Cu, pcbnew.B_Cu]
+ALL_CU = [pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.In3_Cu,
+          pcbnew.In4_Cu, pcbnew.B_Cu]
 
 
 # ── the DRC report tells us what is still open ───────────────────────────────

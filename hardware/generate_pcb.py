@@ -332,7 +332,7 @@ def antenna_keepout(x, y, w=7.0, h=2.2):
     return f'''	(zone
 		(net 0)
 		(net_name "")
-		(layers "F.Cu" "In1.Cu" "In2.Cu" "B.Cu")
+		(layers "F.Cu" "In1.Cu" "In2.Cu" "In3.Cu" "In4.Cu" "B.Cu")
 		(uuid "{uid()}")
 		(name "ANT_KEEPOUT")
 		(hatch edge 0.5)
@@ -344,7 +344,8 @@ def antenna_keepout(x, y, w=7.0, h=2.2):
 	)'''
 
 
-def fiducial_keepout(x, y, side=2.0, layers='"F.Cu" "In1.Cu" "In2.Cu" "B.Cu"'):
+def fiducial_keepout(x, y, side=2.0,
+                     layers='"F.Cu" "In1.Cu" "In2.Cu" "In3.Cu" "In4.Cu" "B.Cu"'):
     """Keep every layer's copper out of a fiducial's optical window.
 
     ⛔ THE ROUTER DOES NOT KNOW WHAT A FIDUCIAL IS. It has no net, so Specctra
@@ -748,10 +749,24 @@ def route(net_index, settled):
 def build():
     r = ['(kicad_pcb', '\t(version 20260206)', '\t(generator "smartbag")',
          '\t(generator_version "10.0")',
-         '\t(general (thickness 0.6) (legacy_teardrops no))',
+         '\t(general (thickness 0.8) (legacy_teardrops no))',
          '\t(paper "A3")', '\t(layers',
+         # ⛔ SIX LAYERS, AND THE FOURTH WAS NOT A PREFERENCE. On four copper
+         # layers this board has THREE that may be routed on — In1 is the RF
+         # reference and nobody routes there — and a QFN48 with thirty-five
+         # escapes exhausts them. U1 pin 22 ended up in a pocket of 0.4 mm2:
+         # measured, by a breadth-first search on a 0.1 mm grid over a 28 mm
+         # window, which reached 23 cells on F.Cu, 41 on In2 and 2 on B.Cu and
+         # no copper of its own net on any of them. Not a router failing — a
+         # board with nowhere left to go.
+         # ⭐ In3 is the second signal layer and In4 the second ground plane, so
+         # every signal layer still has a reference next to it: F/In1, In2/In3
+         # between two planes, B/In4. It also ends the two-millimetre
+         # compromise on decoupling, which was a routing constraint dressed up
+         # as a placement rule.
          '\t\t(0 "F.Cu" signal)', '\t\t(4 "In1.Cu" signal)',
-         '\t\t(6 "In2.Cu" signal)', '\t\t(2 "B.Cu" signal)',
+         '\t\t(6 "In2.Cu" signal)', '\t\t(8 "In3.Cu" signal)',
+         '\t\t(10 "In4.Cu" signal)', '\t\t(2 "B.Cu" signal)',
          '\t\t(9 "F.Adhes" user "F.Adhesive")', '\t\t(11 "B.Adhes" user "B.Adhesive")',
          '\t\t(13 "F.Paste" user)', '\t\t(15 "B.Paste" user)',
          '\t\t(5 "F.SilkS" user "F.Silkscreen")', '\t\t(7 "B.SilkS" user "B.Silkscreen")',
@@ -826,6 +841,11 @@ def build():
             r.append(fiducial_keepout(*settled[_ref]))
     r.append(ground_zone("F.Cu", "GND_top"))
     r.append(ground_zone("In1.Cu", "GND_reference"))
+    # ⭐ The second plane. In2 and In3 are the signal pair and they sit between
+    # In1 and In4, so neither of them is ever more than one dielectric from a
+    # reference — which is the whole reason to spend the two layers rather than
+    # make In3 a third signal layer against nothing.
+    r.append(ground_zone("In4.Cu", "GND_reference_2"))
     r.append(ground_zone("B.Cu", "GND_bottom"))
 
     # ⭐ The coordinates in netlist.py are a FLOORPLAN, not a layout: they say

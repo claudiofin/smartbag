@@ -23,7 +23,7 @@ been built.
 | | |
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
-| board | **113 footprints, four layers, routed, and assembled on BOTH SIDES.** ⛔ It used to be 111 on one side, and finding out why is the largest thing in this session: **every one of the 41 IC supply pins had its decoupling capacitor further than 2 mm away**, the worst at 26 mm. See [Decoupling](#decoupling-the-defect-that-passed-every-check). |
+| board | **113 footprints, SIX layers, routed, and assembled on BOTH SIDES.** ⛔ It used to be 111 on one side, and finding out why is the largest thing in this session: **every one of the 41 IC supply pins had its decoupling capacitor further than 2 mm away**, the worst at 26 mm. See [Decoupling](#decoupling-the-defect-that-passed-every-check). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **23 of 23 agree** — see [The bill of materials](#the-bill-of-materials). |
 | firmware | the wake-up chain, the ledger, the taxel driver, the charge policy, the sensor bring-up, **the sensing loop that finally calls `sb_feed()`** and an Arducam Mega driver written from its own register table — **1035 assertions**, `-Werror`. ⭐ **And it builds for the nRF54L15**: [`firmware/target/`](firmware/target/) is a Zephyr app — ten HAL functions, the GATT service, the PMIC through Nordic's driver, a pin map **generated from the netlist** — at **177 KB of flash and 72 KB of RAM**, run by `tools/verify.sh`. ⚠️ Built, never run: nothing has met silicon. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
@@ -585,6 +585,38 @@ plus routing session — and committing only the board would make the routing
 something nobody could reproduce or review.
 
 ## Decoupling: the defect that passed every check
+
+## Six layers, and the number that decided it
+
+⛔ **Four copper layers meant THREE routable ones**, because In1 is the RF
+reference and nothing is routed there — enforced by marking it a `power` layer
+in the Specctra export, after the first routed board put 34% of its tracks on it.
+A QFN48 with thirty-five escapes exhausts three layers.
+
+⭐ **It was measured, not felt.** U1 pin 22 finished walled in: a breadth-first
+search on a 0.1 mm grid over a 28 mm window, on every routable layer, reached
+
+| layer | free cells reachable from the pin |
+|---|---|
+| F.Cu | 23 |
+| In2.Cu | 41 |
+| B.Cu | 2 |
+
+**0.4 mm² of space, and no copper of its own net anywhere in it.** Moving the
+escape via outward found no clear position within 2.4 mm of the pad either — C7,
+C3, L1 and U5's courtyard are all in that millimetre. Straight links, L-bends,
+two-segment paths with the corner on a grid, and the maze router itself: none of
+them was the problem. The board was.
+
+The stack is now **F.Cu / In1(GND) / In2 / In3 / In4(GND) / B.Cu** — the signal
+pair between the two planes, so no signal layer is ever more than one dielectric
+from a reference. ⚠️ **On a rigid-flex this is not the usual four-to-six
+conversation**: it costs more than on FR4, and whether the flex tails carry all
+six is a question for the quote.
+
+⭐ **And it ends the other compromise too.** The two-millimetre decoupling rule
+below was a routing constraint dressed as a placement rule; with a fourth
+routable layer the capacitors can sit where the datasheet wants them.
 
 ⛔ **Forty-one of forty-one.** Every supply pin of every IC on this board had its
 nearest decoupling capacitor on the same rail more than 2 mm away. The worst was

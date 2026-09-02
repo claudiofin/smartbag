@@ -71,7 +71,7 @@ configured low, and that is a build-time decision, not a preference.
 | outline | {dim.BOARD_W:.0f} x {dim.BOARD_D:.0f} mm strip |
 | copper layers | {len(copper)} — {' / '.join(copper)} |
 | tracks / vias | {tracks} / {vias} |
-| finished thickness | 0.6 mm rigid islands on polyimide flex |
+| finished thickness | 0.8 mm rigid islands on polyimide flex, six copper layers |
 | antenna areas | {dim.ANTENNA_SUBSTRATE_T} mm — see the stackup note below |
 
 ## Process
@@ -104,17 +104,45 @@ for name in ("Default", "Power", "RF_60G", "RF_24G"):
               f"{c['via_diameter']}/{c['via_drill']} mm |")
 
 print(f"""
-## ⛔ Stackup: the part a normal quote will get wrong
+## ⛔ Stackup: six layers, and the two inner planes are not optional
 
-A `.kicad_pcb` carries **one** board thickness, and this design needs two. The
-main board is a 0.6 mm rigid stack. The **antenna areas keep the flex core and a
+| layer | job |
+|---|---|
+| **F.Cu** | signal, and every component except four |
+| **In1.Cu** | ground plane — the RF reference. ⛔ **Nothing is routed on it**, and that is enforced by marking it a `power` layer in the Specctra export rather than by a comment. The first routed board put 34% of its tracks here. |
+| **In2.Cu** | signal |
+| **In3.Cu** | signal |
+| **In4.Cu** | ground plane |
+| **B.Cu** | signal, and four decoupling capacitors |
+
+⭐ **The signal pair sits between the two planes**, so no signal layer is ever
+more than one dielectric from a reference. That is why In3 and In4 were added
+together rather than making In3 a third signal layer against nothing.
+
+⛔ **Four layers was measured to be too few, not felt to be.** With In1 reserved
+this board had three routable layers, and a QFN48 with thirty-five escapes
+exhausts them: U1 pin 22 finished in a pocket of 0.4 mm² — a breadth-first
+search on a 0.1 mm grid over a 28 mm window reached 23 free cells on F.Cu, 41 on
+In2 and 2 on B.Cu, and no copper of its own net on any of them. Moving its
+escape via anywhere within 2.4 mm of the pad found no clear position either.
+
+⚠️ **This is a rigid-flex, so the layer count is not the usual conversation.**
+Adding layers here costs more than it would on FR4, and whether the flex tails
+carry all six or fewer than the rigid islands is a question for the quote. The
+rigid islands need six.
+
+⚠️ A `.kicad_pcb` carries **one** board thickness and this design needs two. The
+main board is a 0.8 mm rigid stack. The **antenna areas keep the flex core and a
 thin stiffener only, {dim.ANTENNA_SUBSTRATE_T} mm to the reference plane.**
 
-That is not a preference. `rf/patch_sim.py` solves the element full-wave on both:
-on 0.6 mm it resonates at 50.8 GHz and reflects almost everything (-2.5 dB); on
-{dim.ANTENNA_SUBSTRATE_T} mm the same patch matches at -27.2 dB with 3.5 GHz of
-bandwidth. Build the antenna areas at full rigid thickness and the radar does not
-work.
+That is not a preference either. `rf/patch_sim.py` solves the element full-wave
+on both: on the rigid stack it resonates at 50.8 GHz and reflects almost
+everything (-2.5 dB); on {dim.ANTENNA_SUBSTRATE_T} mm the same patch matches at
+-27.2 dB with 3.5 GHz of bandwidth.
+
+⚠️ See `tools/bom_report.py`: with a real 60 GHz part the antenna is inside the
+chip package and these islands should not exist at all. If that change is made
+first, this stackup requirement disappears with them.
 
 The note is on the **Cmts.User** layer of the artwork as well as here.
 

@@ -56,7 +56,7 @@ echo "== export DSN =="
 # In1.Cu is marked a PLANE, not a signal layer. ⛔ Without that the router uses
 # it: the first routed board put 34% of its tracks through the RF reference
 # plane, which a comment claimed was never routed on. A comment is not a rule.
-"$KPY" hardware/specctra.py export "$BOARD" "$WORK/board.dsn" In1.Cu | tail -1
+"$KPY" hardware/specctra.py export "$BOARD" "$WORK/board.dsn" In1.Cu,In4.Cu | tail -1
 
 echo "== route ($PASSES passes) =="
 # ⛔ -mt 1, AND THE OBVIOUS SPEED-UP IS A TRAP. The optimiser's own log says
