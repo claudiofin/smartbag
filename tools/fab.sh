@@ -41,10 +41,22 @@ plot_extra() {
     | sed 's/^\*\* //;s/ \*\*$//' | tr '\n' ' ')"
 }
 
-# ⛔ Name every layer explicitly. The default set is for a 2-layer board and
-# would silently drop In1.Cu and In2.Cu — a 4-layer stackup plotted as 2 layers
-# is a board that shorts everywhere the inner planes were doing the work.
-LAYERS="F.Cu,In1.Cu,In2.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts"
+# ⛔ EVERY COPPER LAYER, READ OFF THE BOARD RATHER THAN TYPED. The default set is
+# for a 2-layer board and drops the inner ones silently, which this file already
+# warned about — and then the warning did not save it: the list was written by
+# hand for four layers, the stackup became six, and the next run plotted a
+# six-layer board as four. In3 and In4 simply were not in the zip. A board that
+# ships without two of its copper layers is not a board that shorts here and
+# there; it is a board with two layers of nothing where the signals and a ground
+# plane were.
+#
+# ⭐ So the copper layers come out of the .kicad_pcb's own layer table. It cannot
+# be wrong about how many layers it has.
+COPPER=$(grep -oE '\(([0-9]+) "(F|B|In[0-9]+)\.Cu" ' "$BOARD" \
+  | grep -oE '"[^"]+"' | tr -d '"' | paste -sd, -)
+[ -n "$COPPER" ] || { echo "could not read the copper layers from $BOARD"; exit 1; }
+LAYERS="$COPPER,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts"
+echo "  copper: $COPPER"
 
 echo "== gerbers =="
 kicad-cli pcb export gerbers --output "$OUT/gerbers/" --layers "$LAYERS" \

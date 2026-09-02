@@ -23,7 +23,7 @@ been built.
 | | |
 |---|---|
 | schematic | **exists**, generated from `hardware/netlist.py`. **ERC: 0 violations.** |
-| board | **113 footprints, SIX layers, routed, and assembled on BOTH SIDES.** ⛔ It used to be 111 on one side, and finding out why is the largest thing in this session: **every one of the 41 IC supply pins had its decoupling capacitor further than 2 mm away**, the worst at 26 mm. See [Decoupling](#decoupling-the-defect-that-passed-every-check). |
+| board | **113 footprints, six copper layers, routed, assembled on both sides.** DRC: **0 unconnected, 0 clearance violations, 0 shorts**; ERC clean. ⛔ It took a stackup change to get there, and the number that justified it is in [Six layers](#six-layers-and-the-number-that-decided-it). |
 | part numbers | ⭐ **every IC is a real part, and its pinout comes from its own datasheet.** `tools/bom_report.py` measures each footprint against the datasheet's package on every run: **23 of 23 agree** — see [The bill of materials](#the-bill-of-materials). |
 | firmware | the wake-up chain, the ledger, the taxel driver, the charge policy, the sensor bring-up, **the sensing loop that finally calls `sb_feed()`** and an Arducam Mega driver written from its own register table — **1035 assertions**, `-Werror`. ⭐ **And it builds for the nRF54L15**: [`firmware/target/`](firmware/target/) is a Zephyr app — ten HAL functions, the GATT service, the PMIC through Nordic's driver, a pin map **generated from the netlist** — at **177 KB of flash and 72 KB of RAM**, run by `tools/verify.sh`. ⚠️ Built, never run: nothing has met silicon. |
 | recognition on the real part | the SoC has **no NPU**, so it was costed: 6.99 M MACs a frame on a 128 MHz M33 is **110–191 ms** against a settle window of 2000 ms — see [Recognition fits](#recognition-fits-the-processor). |
@@ -35,7 +35,7 @@ been built.
 | the 2.4 GHz antenna | ⛔ its datasheet found **three errors** in this design, one of them a terminal tied to ground that the part marks NC — see [The antenna](#the-antenna). |
 | the optics flex | **exists now.** J1 was a connector to nothing for the whole project: the camera, the illuminators and the ToF live here. DRC 0 errors, 1 unconnected item. |
 | the taxel sheet | **exists now.** 96 interdigitated sites, 16 columns and 6 rows, no components. **DRC 0 errors, 0 unconnected pads.** |
-| fabrication | Gerbers, drill, placement, DRC reports and a generated fab note for **all three boards**: `tools/fab.sh`. ⚠️ **Two assembly sides now** — the processor's four decoupling capacitors are underneath it. |
+| fabrication | Gerbers for **all six copper layers**, drill, placement, DRC reports and a generated fab note for all three boards: `tools/fab.sh`. ⛔ The copper layer list is read out of the board file now — it was typed by hand, the stackup grew, and the next run plotted a six-layer board as four with In3 and In4 simply absent from the zip. ⚠️ **Two assembly sides now** — the processor's four decoupling capacitors are underneath it. |
 | wireless power | ⛔ there was **no Qi receiver**: a coil was wired straight into a PMIC input that wants 4.0–5.5 V DC. There is now a BQ51013B, a dual resonant tank computed from the coil's own inductance, and a rectifier — see [Wireless power](#wireless-power). |
 
 Run everything that can be checked:
@@ -617,6 +617,28 @@ six is a question for the quote.
 ⭐ **And it ends the other compromise too.** The two-millimetre decoupling rule
 below was a routing constraint dressed as a placement rule; with a fourth
 routable layer the capacitors can sit where the datasheet wants them.
+
+### What it produced
+
+```
+0 unconnected pads · 0 clearance violations · 0 shorts · ERC 0 errors 0 warnings
+```
+
+Six warnings remain and all six are known: two A121 library mismatches that have
+been overridden since the footprint was transcribed from its datasheet, and four
+escape vias that `drop_dangling` now spares **on purpose** — removing two of
+them is what stranded these pins in the first place, and that took most of a
+session to find.
+
+⛔ **And the finishing is part of the pipeline now, because it was not.** A
+`.ses` file holds what the *router* did; five of this board's connections are
+closed after it, by four steps that were being run by hand. Regenerating from
+the session threw all of it away and the rebuild still **looked** routed —
+which is the worst way for a board file to be wrong. `route.sh` and
+`reroute_from_session.sh` run them in the order that matters, and
+[`hardware/repairs.py`](hardware/repairs.py) carries the two paths that close
+U1 pins 10 and 22 as polylines with a premise each: if the board moves under
+them they refuse loudly rather than laying copper into whatever is there now.
 
 ⛔ **Forty-one of forty-one.** Every supply pin of every IC on this board had its
 nearest decoupling capacitor on the same rail more than 2 mm away. The worst was
