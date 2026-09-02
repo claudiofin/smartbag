@@ -87,6 +87,20 @@ echo "== import =="
 # only be found once the tracks exist.
 "$KPY" hardware/stitch.py "$BOARD" | tail -1
 
+# ⛔ THE FINISHERS ARE PART OF THE PIPELINE, NOT SOMETHING SOMEBODY REMEMBERS.
+# A .ses holds what the ROUTER did; everything after it — the escape vias the
+# tidy-up keeps, the layer changes that were never routing problems, the two
+# paths a search found and DRC accepted — lives in these four steps. Leaving
+# them out of the script is how a board that reached zero came back with five
+# open connections the next time anybody regenerated it. That happened.
+echo "== finish =="
+"$KPY" hardware/maze.py --tidy "$BOARD" | tail -1
+for _ in 1 2 3; do
+  "$KPY" hardware/maze.py --link "$BOARD" 2>/dev/null | grep -E "via was|track from" || true
+  "$KPY" hardware/maze.py "$BOARD" 2>/dev/null | grep -E "^done" || true
+done
+"$KPY" hardware/repairs.py "$BOARD" | tail -1
+
 echo "== DRC =="
 kicad-cli pcb drc --schematic-parity --severity-all -o "$WORK/drc.rpt" "$BOARD" \
   >/dev/null 2>&1 || true

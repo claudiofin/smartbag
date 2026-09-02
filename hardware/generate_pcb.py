@@ -897,9 +897,12 @@ def build():
     # place a design's claims are printed on the object itself, where nobody
     # regenerates them.
     # ⚠️ And it ran across J2's through-hole pads, which is ink where solder
-    # goes. J2 moved to the cell's side of the board; the text did not follow.
-    r.append(text("SMARTBAG CORE  v0.3", 22.0, -6.0, "B.SilkS", 1.6, 0.24))
-    r.append(text("tagless inventory - 4L rigid-flex", 22.0, -3.4, "B.SilkS", 1.0, 0.16))
+    # goes. J2 moved to the cell's side of the board; the text did not follow —
+    # and then it moved again, to the bottom lane, and the text did not follow
+    # a second time. ⛔ 22.0 was tracking a connector by hand; -1.0 is the lane
+    # that is empty on the back whatever J2 does.
+    r.append(text("SMARTBAG CORE  v0.3", -1.0, -6.0, "B.SilkS", 1.6, 0.24))
+    r.append(text("tagless inventory - 6L rigid-flex", -1.0, -3.4, "B.SilkS", 1.0, 0.16))
     for i, s_ in enumerate([
         "U1 nRF54L15   U2/U6 A121 60 GHz   U3 nPM1300",
         "U4 BMI270 IMU   U5 zip Hall   U11 BQ51013B Qi",

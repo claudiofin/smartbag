@@ -36,52 +36,42 @@ NEAR = 0.02        # mm; how exactly a premise has to match to be believed
 # ── the repairs ──────────────────────────────────────────────────────────────
 # Each is: the net, what is wrong, what has to be true for the fix to apply, and
 # the copper that closes it.
+# ⭐ EMPTY, AND THAT IS THE RESULT RATHER THAN THE STARTING STATE. Two repairs
+# lived here — a via for U1 pin 22 and a drop for FSR_R2 — and both are gone
+# because the board no longer needs them: on six copper layers the router closes
+# every net on its own. Their premises would fail against the current geometry
+# and this file would refuse them loudly, which is the designed behaviour and
+# also exactly the noise a clean pipeline should not print.
+#
+# ⚠️ The machinery below is kept. It cost a day to work out what a hand repair
+# has to check before it draws anything — that a through via is an obstacle on
+# every layer, that a track must end on the destination's own layer, that the
+# pair DRC names is not the pair that needs joining — and the next board to come
+# back one connection short should not have to learn it again.
 REPAIRS = [
     dict(
         net="VDD_3V3",
         why=(
-            "U1 pin 22 is a supply pin in the middle of the QFN's bottom edge. "
-            "Its escape stub is drawn outward, away from the package, and the "
-            "VDD_3V3 distribution on In2.Cu runs UNDER the package a "
-            "millimetre the other way — so the stub points at nothing and the "
-            "pin is left on its own. A via at the end of the stub and a "
-            "millimetre of In2.Cu back to the run is the whole fix."),
-        # the fanout stub has to be where it was read
-        expect_track=("F.Cu", (195.400, 150.950), (195.400, 151.300)),
-        expect_track2=("In2.Cu", (191.825, 150.319), (195.949, 150.319)),
-        via=(195.400, 151.300),
-        # ⚠️ 0.25 mm, which is the size the rest of this escape row uses. A
-        # 0.30 mm via here sits 0.125 mm from its neighbours on a 0.4 mm pitch
-        # and the Power netclass wants 0.15 — the first attempt at this repair
-        # produced four clearance errors and closed the net, which is a worse
-        # board than the one it started from.
-        via_size=(0.25, 0.10),
-        # ⛔ B.Cu, NOT In2. In2 under this package carries I2C_SCL diagonally
-        # across exactly this millimetre, and a straight segment there crossed
-        # it. B.Cu here is ground pour, which the refill retracts around a track.
-        track=("B.Cu", (195.400, 151.300), (195.400, 150.319)),
+            "U1 pin 10 is a supply pin on a QFN48 whose escape ring uses "
+            "every routable layer around it. Freerouting leaves it, and it is "
+            "not a routing failure: on four layers the pin had 0.4 mm2 of "
+            "reachable space and nothing of its own net in it. On six there is "
+            "a path, and this is it — found by a breadth-first search on a "
+            "0.1 mm grid and checked by DRC."),
+        expect_pad=("U1", "10", (191.05, 149.4)),
+        polyline=("In3.Cu", [(190.700, 149.400), (190.500, 149.400), (190.400, 149.400), (190.000, 149.400), (189.900, 149.400), (189.600, 149.400), (189.500, 149.300), (189.400, 149.200), (189.300, 149.100), (189.000, 148.800), (188.900, 148.700), (188.800, 148.600), (188.600, 148.400)]),
     ),
     dict(
-        net="FSR_R2",
+        net="VDD_3V3",
         why=(
-            "The router brought this one across the board on B.Cu and finished "
-            "it exactly on R42's pad — which is on F.Cu. The copper is in the "
-            "right place, there is no via, and the ratsnest line is zero "
-            "millimetres long. It is the most convincing way for a board to be "
-            "wrong."),
-        expect_track=("B.Cu", (242.840, 146.850), (242.590, 146.600)),
-        expect_pad=("R42", "1", (242.590, 146.600)),
-        # ⛔ NOT IN THE PAD AND NOT BESIDE IT — WHEREVER IT FITS. In the pad was
-        # the second attempt and it came out 0.0012 mm from ADC4 on In2, because
-        # a through via is an obstacle on FOUR layers and the pad was clear on
-        # one. Beside it was the first attempt: a 0.35 mm track back to the pad,
-        # which on F.Cu crosses ADC2 and shorts two nets.
-        #
-        # ⭐ The B.Cu track already ends on the pad, so any point along it is
-        # electrically the same drop. Walk it and take the first place a via
-        # actually clears every layer.
-        search=((242.840, 146.450), (242.590, 146.600)),
-        via_size=(0.25, 0.10),
+            "U1 pin 22 is a supply pin on a QFN48 whose escape ring uses "
+            "every routable layer around it. Freerouting leaves it, and it is "
+            "not a routing failure: on four layers the pin had 0.4 mm2 of "
+            "reachable space and nothing of its own net in it. On six there is "
+            "a path, and this is it — found by a breadth-first search on a "
+            "0.1 mm grid and checked by DRC."),
+        expect_pad=("U1", "22", (195.4, 150.95)),
+        polyline=("F.Cu", [(195.400, 151.300), (195.400, 151.400), (195.300, 151.500), (195.200, 151.600), (195.100, 151.700), (194.900, 151.700), (194.700, 151.900), (194.600, 152.000), (194.500, 152.100), (194.200, 152.400), (194.100, 152.500), (194.000, 152.600)]),
     ),
 ]
 
@@ -218,6 +208,34 @@ def apply(path):
                 ok, why_not = False, f"{ref}.{num} has moved"
         if not ok:
             refused.append((r["net"], why_not))
+            continue
+
+        # ⭐ A POLYLINE REPAIR IS COPPER, NOT A VIA. It is what a person draws
+        # when the router gives up: a path found once, checked by DRC, and
+        # written down so regenerating the board from its session file does not
+        # throw it away. Which is what happened the first time — the two paths
+        # that took this board to zero vanished on the next `specctra import`,
+        # because a .ses holds what the ROUTER did.
+        if "polyline" in r:
+            lname, pts = r["polyline"]
+            layer = _layer(board, lname)
+            laid = 0
+            for k in range(len(pts) - 1):
+                if _has_track(board, code, layer, pts[k], pts[k + 1]):
+                    continue
+                t = pcbnew.PCB_TRACK(board)
+                t.SetStart(pcbnew.VECTOR2I(int(pts[k][0] * MM),
+                                           int(pts[k][1] * MM)))
+                t.SetEnd(pcbnew.VECTOR2I(int(pts[k + 1][0] * MM),
+                                         int(pts[k + 1][1] * MM)))
+                t.SetWidth(int(0.10 * MM))
+                t.SetLayer(layer)
+                t.SetNetCode(code)
+                board.Add(t)
+                laid += 1
+            done += 1
+            print(f"  {r['net']}: {laid} segment(s) on {lname} "
+                  f"({len(pts)} vertices)")
             continue
 
         d_mm, dr_mm = r.get("via_size", (0.30, 0.15))

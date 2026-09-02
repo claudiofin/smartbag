@@ -20,15 +20,20 @@ python3 hardware/generate_pcb.py | tail -1
 "$KPY" hardware/specctra.py import hardware/smartbag_core.kicad_pcb hardware/smartbag_core.ses | tail -1
 "$KPY" hardware/fill_zones.py hardware/smartbag_core.kicad_pcb | tail -1
 "$KPY" hardware/stitch.py hardware/smartbag_core.kicad_pcb | tail -1
-# ⛔ THE MAZE ROUTES ARE NOT IN THE SESSION FILE. freerouting wrote the .ses and
-# gave up on four connections; hardware/maze.py closed two of them afterwards,
-# straight onto the board. Rebuilding from the session alone therefore throws
-# that work away every time — silently, because the board still looks routed.
-# It is deterministic (A* over a fixed grid, no randomness), so re-running it
-# here reproduces exactly the same two routes.
-"$KPY" hardware/maze.py hardware/smartbag_core.kicad_pcb | tail -1
-# ⛔ And take the unused fanout vias back out. qfn_fanout() offers one per signal
-# pin so the router has somewhere to go; what it does not take is a drill hit
-# nobody pays for on purpose.
-echo "  $("$KPY" hardware/maze.py --tidy hardware/smartbag_core.kicad_pcb \
-  2>/dev/null | tail -1) dangling fanout vias removed"
+# ⛔ THE FINISHING IS NOT IN THE SESSION FILE. freerouting wrote the .ses and
+# left five connections; what closed them lives in four steps after it — the
+# escape vias the tidy-up now KEEPS, the layer changes that were never routing
+# problems, and two paths a breadth-first search found and DRC accepted. All of
+# it is deterministic, so re-running it here reproduces the same board.
+# ⚠️ Order matters. --tidy first, because it decides which fanout vias survive;
+# --link before the maze router, because the maze router answers a question
+# these do not ask and spends a minute per pair doing it; repairs.py last,
+# because it lays copper the searches cannot find.
+"$KPY" hardware/maze.py --tidy hardware/smartbag_core.kicad_pcb | tail -1
+for _ in 1 2 3; do
+  "$KPY" hardware/maze.py --link hardware/smartbag_core.kicad_pcb 2>/dev/null \
+    | grep -E "via was|track from" || true
+  "$KPY" hardware/maze.py hardware/smartbag_core.kicad_pcb 2>/dev/null \
+    | grep -E "^done" || true
+done
+"$KPY" hardware/repairs.py hardware/smartbag_core.kicad_pcb | tail -1
