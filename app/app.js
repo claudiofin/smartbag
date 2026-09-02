@@ -395,7 +395,14 @@ function banner(text) {
  * opened. It is the same simulator and the same code path; the only thing the
  * parameter does is decide how many objects are already there. */
 const demo = Math.min(6, Math.max(0, +new URLSearchParams(location.search).get('demo') || 0));
-attach(new SimulatedInsert('Work tote', demo ? { seedObjects: demo } : {}));
+const insert = new SimulatedInsert('Work tote', demo ? { seedObjects: demo } : {});
+/* ⭐ A handle on the simulated insert, so something outside this page can drive
+ * it. tools/build_app_film.sh puts the app in a phone on a 1080x1920 canvas and
+ * scripts a bag being opened and used; without a handle the film would have to
+ * re-implement the app to animate it, which is the one thing this project does
+ * not do anywhere else. It is also the console handle anybody debugging wants. */
+window.insert = insert;
+attach(insert);
 simCount = 1;
 if (!demo) log('simulated insert attached');
 

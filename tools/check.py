@@ -856,6 +856,11 @@ _SHOWS = {
                                   "hardware/smartbag_core.kicad_pcb"],
     "media/smartbag_discovery.mp4": ["render/animation.py", "render/scenes.py",
                            "dimensions.py"],
+    # ⚠️ The app film is captured from the app itself, so its sources are the
+    # app's, not Blender's. app/film.html scripts the timeline; app.js, sim.js
+    # and protocol.js are what it films.
+    "media/smartbag_app.mp4": ["app/film.html", "app/app.js", "app/sim.js",
+                               "app/protocol.js", "app/icons.js"],
     "media/smartbag.mp4": ["render/animation.py", "render/scenes.py",
                            "dimensions.py"],
     "media/smartbag_sequence.mp4": ["render/animation.py", "render/scenes.py",
@@ -877,6 +882,7 @@ _FRAMES = {
     "media/smartbag.mp4": ["opening", "exploded", "scanning"],
     "media/smartbag_sequence.mp4": ["unzip", "object_drop", "scanning"],
     "media/smartbag_discovery.mp4": ["unzip_v", "object_drop_v"],
+    "media/smartbag_app.mp4": ["app_film"],
 }
 
 

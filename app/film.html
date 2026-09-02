@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>SmartBag — the app, 9:16</title>
+<!--
+  ⭐ THE FILM IS THE REAL APP, IN A PHONE, ON A 1080x1920 CANVAS. Same trick as
+  mock.html: the page IS the picture. An iframe 390 px wide puts index.html into
+  its phone layout, and everything inside is the same code, the same simulator
+  and the same protocol.js that decodes a real insert's bytes. Nothing here is
+  drawn to look like an app.
+
+  ⛔ AND THE TIMELINE IS DRIVEN BY FRAME NUMBER, NOT BY THE CLOCK. `?f=42` is
+  frame 42 and always shows the same thing. A film built by screenshotting a
+  page that animates on wall-clock time is a film whose frames depend on how
+  busy the machine was, which is not a film you can rebuild.
+
+  ⚠️ Which means every step is applied from the beginning on every frame: the
+  script replays the whole story up to `f` and then paints. Cheap at this scale
+  (a few dozen events), and it makes frame N independent of frames 1..N-1.
+
+  ⛔ AND IT HAS TO BE SERVED OVER HTTP, NOT OPENED AS A FILE. app.js is an ES
+  module and Chrome blocks module imports across file:// for CORS — the page
+  loads, the iframe loads, and the app inside simply never runs. It does not
+  fail loudly: it renders its own empty state, which looks exactly like an app
+  with nothing in the bag. tools/build_app_film.sh serves app/ for the capture.
+
+  Usage: tools/build_app_film.sh
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  /* ⚠️ Exactly 1080 x 1920, fixed. The capture is told the same numbers and
+     there is nothing left to crop — a crop centres on the middle of the
+     CAPTURE, which is only the middle of the phone if the two agree, and
+     headless Chrome does not reliably make them agree. */
+  body {
+    position: relative; width: 1080px; height: 1920px; overflow: hidden;
+    background: #0c0c10;
+    background-image: radial-gradient(120% 70% at 50% 8%, #1c1c24 0%, #08080b 72%);
+    font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #b9b4a8;
+  }
+
+  /* The phone: 414 x 868 including bezel, scaled 1.8x to fill a vertical
+     frame. Transform rather than bigger pixels, so the app inside still lays
+     itself out at 390 px and stays in its phone layout. */
+  /* ⚠️ 1.62, not 1.8, and a top of 372: at 1.8 the phone ended flush with the
+     bottom of the frame and sat under the wordmark. The caption band, the
+     phone and the mark are three things that have to coexist in 1920 px. */
+  .phone {
+    position: absolute; left: 50%; top: 372px;
+    width: 414px; height: 868px;
+    transform: translateX(-50%) scale(1.62); transform-origin: 50% 0;
+    border-radius: 54px; background: #24242a; padding: 12px;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.07),
+                inset 0 0 0 2px rgba(255,255,255,0.05);
+  }
+  .screen {
+    position: relative; width: 390px; height: 844px; border-radius: 42px;
+    overflow: hidden; background: #14140f;
+  }
+  iframe { width: 390px; height: 844px; border: 0; display: block; }
+  .notch {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    width: 112px; height: 30px; border-radius: 16px; background: #0b0b0d; z-index: 2;
+  }
+
+  /* ⭐ A caption band, because a discovery feed plays without sound and the
+     product has nothing to see on the outside. The words carry the whole
+     claim; the phone carries the proof. */
+  .caption {
+    position: absolute; left: 0; right: 0; top: 96px;
+    text-align: center; padding: 0 90px;
+  }
+  .caption .big {
+    font-size: 62px; line-height: 1.12; font-weight: 600;
+    letter-spacing: -0.02em; color: #f2efe6; margin: 0;
+    text-wrap: balance;
+  }
+  .caption .small {
+    font-size: 30px; line-height: 1.35; color: #8d887c; margin: 18px 0 0;
+    text-wrap: balance;
+  }
+  .fade { opacity: 0; transition: none; }
+  .fade.on { opacity: 1; }
+
+  /* Wordmark, bottom, quiet. */
+  .mark {
+    position: absolute; left: 0; right: 0; bottom: 74px; text-align: center;
+    font-size: 27px; letter-spacing: 0.30em; text-transform: uppercase;
+    color: #5d594f;
+  }
+</style>
+</head>
+<body>
+  <div class="caption">
+    <p class="big" id="big"></p>
+    <p class="small" id="small"></p>
+  </div>
+
+  <div class="phone">
+    <div class="screen">
+      <div class="notch"></div>
+      <iframe id="app" src="index.html?demo=3" title="SmartBag app"></iframe>
+    </div>
+  </div>
+
+  <div class="mark">SmartBag</div>
+
+<script type="module">
+/* ── the timeline ────────────────────────────────────────────────────────────
+ * Frame numbers at 30 fps. Each entry is (frame, what to do), replayed from the
+ * start on every frame so that frame N does not depend on frame N-1.
+ *
+ * ⚠️ The captions are the script. The bag does nothing visible from outside —
+ * that is the product — so what a viewer has to understand is the relationship
+ * between the bag and the phone, and eleven seconds without sound is not long
+ * enough to infer it. */
+const FPS = 30;
+const s = (n) => Math.round(n * FPS);
+
+const CAPTIONS = [
+  [s(0.0),  "La tua borsa sa cosa contiene", "Nessuna etichetta. Nessun tag."],
+  [s(3.6),  "Ci metti qualcosa dentro",      "Il telefono lo sa prima che tu chiuda la cerniera."],
+  [s(7.2),  "E sa dov'è",                    "Sul fondo, misurato, non indovinato."],
+  [s(10.0), "SmartBag",                      "Un inserto. Entra nella borsa che hai già."],
+];
+
+/* What the simulated insert does, and when. */
+const SCRIPT = [
+  [s(4.2), (ins) => ins.openAndInsert()],
+  [s(5.6), (ins) => ins.openAndInsert()],
+  [s(8.4), (ins) => ins.openAndInsert()],
+];
+
+const frame = Math.max(0, +new URLSearchParams(location.search).get('f') || 0);
+
+function caption() {
+  let cur = CAPTIONS[0];
+  for (const c of CAPTIONS) if (frame >= c[0]) cur = c;
+  document.getElementById('big').textContent = cur[1];
+  document.getElementById('small').textContent = cur[2];
+}
+
+/* ⛔ The iframe has to have finished booting before its insert exists. `load`
+ * is not enough on its own — app.js runs as a module, so it executes after the
+ * document is parsed — hence the poll rather than a single check. */
+function withInsert(fn, tries = 60) {
+  const w = document.getElementById('app').contentWindow;
+  if (w && w.insert) return fn(w.insert);
+  if (tries > 0) setTimeout(() => withInsert(fn, tries - 1), 16);
+}
+
+caption();
+withInsert((ins) => {
+  for (const [at, step] of SCRIPT) if (frame >= at) step(ins);
+  document.body.dataset.ready = '1';
+});
+</script>
+</body>
+</html>
