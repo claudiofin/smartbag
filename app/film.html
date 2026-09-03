@@ -42,10 +42,10 @@
     color: #b9b4a8;
   }
 
-  /* The phone: 414 x 868 including bezel, scaled 1.8x to fill a vertical
-     frame. Transform rather than bigger pixels, so the app inside still lays
-     itself out at 390 px and stays in its phone layout. */
-  /* ⚠️ 1.62, not 1.8, and a top of 372: at 1.8 the phone ended flush with the
+  /* The phone: 414 x 868 including bezel, scaled to fill a vertical frame.
+     Transform rather than bigger pixels, so the app inside still lays itself
+     out at 390 px and stays in its phone layout.
+     ⚠️ 1.62, not 1.8, and a top of 372: at 1.8 the phone ended flush with the
      bottom of the frame and sat under the wordmark. The caption band, the
      phone and the mark are three things that have to coexist in 1920 px. */
   .phone {
@@ -82,9 +82,6 @@
     font-size: 30px; line-height: 1.35; color: #8d887c; margin: 18px 0 0;
     text-wrap: balance;
   }
-  .fade { opacity: 0; transition: none; }
-  .fade.on { opacity: 1; }
-
   /* Wordmark, bottom, quiet. */
   .mark {
     position: absolute; left: 0; right: 0; bottom: 74px; text-align: center;

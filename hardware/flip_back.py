@@ -41,8 +41,6 @@ sys.path.insert(0, HERE)
 
 import netlist as nl              # noqa: E402
 
-MM = 1e6
-
 
 def flip(path):
     board = pcbnew.LoadBoard(path)

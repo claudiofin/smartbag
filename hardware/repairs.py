@@ -28,26 +28,27 @@ import sys
 import pcbnew
 
 MM = 1e6
-VIA_D = int(0.30 * MM)
-VIA_DRILL = int(0.15 * MM)
+# ⚠️ Via size is per-repair (`via_size`), not global: the escape rows on this
+# board are on a 0.4 mm pitch and a 0.30 mm via there is a clearance error.
 NEAR = 0.02        # mm; how exactly a premise has to match to be believed
 
 
 # ── the repairs ──────────────────────────────────────────────────────────────
 # Each is: the net, what is wrong, what has to be true for the fix to apply, and
 # the copper that closes it.
-# ⭐ EMPTY, AND THAT IS THE RESULT RATHER THAN THE STARTING STATE. Two repairs
-# lived here — a via for U1 pin 22 and a drop for FSR_R2 — and both are gone
-# because the board no longer needs them: on six copper layers the router closes
-# every net on its own. Their premises would fail against the current geometry
-# and this file would refuse them loudly, which is the designed behaviour and
-# also exactly the noise a clean pipeline should not print.
+# ⛔ THIS COMMENT SAID "EMPTY" WITH TWO REPAIRS UNDER IT, FOR AN HOUR. The list
+# genuinely was emptied — six copper layers close the nets the four-layer board
+# could not — and then the rebuild from the session file showed that the two
+# paths those layers made POSSIBLE are still not something freerouting finds, so
+# they came back as polylines and the comment above them did not. It is the
+# exact failure this project keeps finding in its own files: netlist.py claimed
+# the decoupling was fixed on all four sides of a QFN and named a capacitor on
+# another net as proof. A comment is not a check, including this one.
 #
-# ⚠️ The machinery below is kept. It cost a day to work out what a hand repair
-# has to check before it draws anything — that a through via is an obstacle on
-# every layer, that a track must end on the destination's own layer, that the
-# pair DRC names is not the pair that needs joining — and the next board to come
-# back one connection short should not have to learn it again.
+# ⭐ WHAT IS HERE NOW: two paths for U1's supply pins 10 and 22, found by a
+# breadth-first search on a 0.1 mm grid and accepted by DRC. A .ses holds what
+# the ROUTER did; these are what came after, and without them a regenerated
+# board comes back two connections short and still looks routed.
 REPAIRS = [
     dict(
         net="VDD_3V3",

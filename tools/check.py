@@ -861,6 +861,11 @@ _SHOWS = {
     # and protocol.js are what it films.
     "media/smartbag_app.mp4": ["app/film.html", "app/app.js", "app/sim.js",
                                "app/protocol.js", "app/icons.js"],
+    # ⚠️ The app still is a deliverable too — it is what the Kickstarter page
+    # shows of the software — and it was the one picture nothing watched.
+    "render/views/app_mock.png": ["app/mock.html", "app/app.js", "app/sim.js",
+                                  "app/protocol.js", "app/icons.js",
+                                  "app/style.css"],
     "media/smartbag.mp4": ["render/animation.py", "render/scenes.py",
                            "dimensions.py"],
     "media/smartbag_sequence.mp4": ["render/animation.py", "render/scenes.py",

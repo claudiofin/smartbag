@@ -399,17 +399,25 @@ with rip-up and retry.
 tools/route.sh                      # generate → DSN → route → import → stitch → DRC
 hardware/reroute_from_session.sh    # rebuild from the committed .ses, no Java
 hardware/stitch.py                 # tie orphaned ground islands back to the plane
-hardware/finish.py                 # try the last few by hand, with DRC as the judge
 ```
 
-⭐ **`finish.py` exists because Freerouting recommends something it cannot do.**
+⭐ **`maze.py` exists because Freerouting recommends something it cannot do.**
 When it stops improving it says so: *"it is recommended to stop it and finish the
 board manually."* Manually is fine — but a person drawing four tracks and
 eyeballing them is exactly the step this project avoids everywhere else. So the
-candidates are drawn blind, seven shapes per pad, and **DRC decides**: a shape is
-kept only if the board comes out with fewer unconnected pads and no new
-violations, and reverted otherwise. It cannot make the board worse; the worst it
-can do is fail to help, which on these four pads is what it reports.
+candidates are drawn blind and **DRC decides**: a route is kept only if the net
+it was drawn for has fewer breaks and the board has no new violations, and
+reverted otherwise. It cannot make the board worse; the worst it can do is fail
+to help.
+
+⛔ **Which is a harder test to write than it looks.** "Fewer unconnected pads on
+the board" is wrong — KiCad reports one ratsnest line per NET, so closing one of
+a net's two breaks changes nothing and a correct repair gets thrown away. "The
+pair DRC named is gone" is wrong — KiCad picks a different representative item
+every run, so it is always true, and under it this router once accepted twelve
+vias that connected nothing and reported each as a success. Counting islands
+through KiCad's own connectivity was wrong too. What works is asking DRC how
+many breaks **this net** has left.
 
 ⚠️ Its first version reverted by reloading the board from the file it had just
 written the failed candidate into. Three rejected tracks accumulated in the
@@ -465,7 +473,7 @@ and the other instances run at 8 MHz instead of 32.
 
 ⭐ **And one of the four was closed by writing a router for it.**
 [`hardware/maze.py`](hardware/maze.py) is A* over a 0.1 mm grid, and it exists
-because `finish.py` cannot go *around*: it tries a straight line and two L-bends
+because a fixed set of shapes cannot go *around*: a straight line and two L-bends
 per layer, which on a board this dense all cross something. It reports that
 honestly and stops.
 
@@ -1523,18 +1531,20 @@ hardware/generate_board.py   the optics flex (a second, simpler board generator)
 hardware/generate_taxels.py  the 96-site force-sensing sheet: pure geometry
 hardware/optics_netlist.py   camera, illuminators and the time-of-flight sensor
 hardware/taxel_netlist.py    one connector and 22 nets; the rest is copper
-hardware/place.py            settles 99 hand-typed positions so no courtyards touch
-hardware/stitch.py           ties orphaned ground islands back, deletes the rest
-hardware/flip_back.py        moves netlist.BACK's parts underneath, via in pad
-hardware/close_gaps.py       the two ways a router leaves a net a hair short
+hardware/flip_back.py        moves netlist.BACK's parts underneath
 hardware/repairs.py          the connections a person finished, written down
-hardware/maze.py             an A* router for what Freerouting gives up on
+hardware/maze.py             A* routing, layer changes, and what DRC will accept
 tools/calibrate.py           the four things a datasheet cannot settle
 tools/order.py               the BOM as a basket, with what is not on a shelf
+tools/tech_pack.py           what a leather goods maker needs, generated
+tools/compliance.py          what a test house asks for, and what nobody can answer
+cad/patterns.py              flat cutting patterns, 1:1 DXF
+app/film.html                the app in a phone, 9:16, driven by frame number
+tools/build_app_film.sh      captures it with headless Chrome -> mp4
 ml/inference_budget.py       does the model fit a 128 MHz M33? counted, not guessed
 hardware/specctra.py         DSN out / SES in, plus the fixes the router needs
 hardware/place.py            a floorplan is a hint; this makes it a placement
-hardware/stitch.py           ties orphaned ground islands back to the plane
+hardware/stitch.py           ties ground islands back, and deletes what it cannot
 hardware/generate_footprints.py  the one footprint KiCad does not ship
 hardware/footprints/         the A121, transcribed from its datasheet
 tools/fab.sh                 Gerbers, drill, placement, notes and the DRC report
