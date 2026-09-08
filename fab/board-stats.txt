@@ -1,6 +1,6 @@
 PCB statistics report
 =====================
-- Date: Wednesday, September 02, 2026 at 02:46:42 PM
+- Date: Wednesday, September 09, 2026 at 12:36:22 AM
 - Project: smartbag_core
 - Board name: smartbag_core
 
@@ -9,8 +9,8 @@ Board
 - Width: 196.0000 mm
 - Height: 20.0000 mm
 - Area: 3788.00 mm²
-- Front copper area: 3497.121 mm²
-- Back copper area: 3483.02 mm²
+- Front copper area: 3497.181 mm²
+- Back copper area: 3482.275 mm²
 - Min track clearance: 0.1015 mm
 - Min track width: 0.1000 mm
 - Min drill diameter: 0.1000 mm
@@ -31,7 +31,7 @@ Pads
 
 Vias
 ----
-- Through vias: 454
+- Through vias: 455
 - Blind vias: 0
 - Buried vias: 0
 - Micro vias: 0
@@ -51,5 +51,5 @@ Drill holes
 
 | Count | Shape |    X Size |    Y Size | Plated | Via/Pad | Start Layer | Stop Layer |
 |-------|-------|-----------|-----------|--------|---------|-------------|------------|
-|   454 | Round | 0.1000 mm | 0.1000 mm |    PTH |     Via |        F.Cu |       B.Cu |
+|   455 | Round | 0.1000 mm | 0.1000 mm |    PTH |     Via |        F.Cu |       B.Cu |
 |     3 | Round | 0.7500 mm | 0.7500 mm |    PTH |     Pad |        F.Cu |       B.Cu |

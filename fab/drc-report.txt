@@ -1,26 +1,26 @@
 ** Drc report for smartbag_core.kicad_pcb **
-** Created on 2026-09-02T14:46:41 **
+** Created on 2026-09-09T00:36:22 **
 ** Report includes: Errors, Warnings, Exclusions **
 
 ** Found 6 DRC violations **
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
-    @(302.7500 mm, 146.7500 mm): Via [GND] on F.Cu - B.Cu
-[via_dangling]: Via is not connected or connected on only one layer
-    Local override; warning
-    @(190.7000 mm, 145.8000 mm): Via [XTAL32K_1] on F.Cu - B.Cu
+    @(195.4000 mm, 151.3000 mm): Via [VDD_3V3] on F.Cu - B.Cu
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
     @(197.3000 mm, 145.8000 mm): Via [VDD_3V3] on F.Cu - B.Cu
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
     @(215.6070 mm, 150.7880 mm): Via [VSET2] on F.Cu - B.Cu
-[lib_footprint_mismatch]: Footprint 'Acconeer_A121_fcCSP50' does not match copy in library 'SmartBag'
+[via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
-    @(119.0000 mm, 148.0000 mm): Footprint U2
+    @(190.7000 mm, 145.8000 mm): Via [XTAL32K_1] on F.Cu - B.Cu
 [lib_footprint_mismatch]: Footprint 'Acconeer_A121_fcCSP50' does not match copy in library 'SmartBag'
     Local override; warning
     @(301.0000 mm, 148.0000 mm): Footprint U6
+[lib_footprint_mismatch]: Footprint 'Acconeer_A121_fcCSP50' does not match copy in library 'SmartBag'
+    Local override; warning
+    @(119.0000 mm, 148.0000 mm): Footprint U2
 
 ** Found 0 unconnected pads **
 

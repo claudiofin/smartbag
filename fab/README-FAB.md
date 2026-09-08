@@ -34,7 +34,7 @@ configured low, and that is a build-time decision, not a preference.
 |---|---|
 | outline | 196 x 20 mm strip |
 | copper layers | 6 — F.Cu / In1.Cu / In2.Cu / In3.Cu / In4.Cu / B.Cu |
-| tracks / vias | 1473 / 454 |
+| tracks / vias | 1492 / 455 |
 | finished thickness | 0.8 mm rigid islands on polyimide flex, six copper layers |
 | antenna areas | 0.25 mm — see the stackup note below |
 

@@ -17,7 +17,20 @@ export PYTHONDONTWRITEBYTECODE=1
 
 OUT="${1:-fab}"
 BOARD=hardware/smartbag_core.kicad_pcb
-rm -rf "$OUT"; mkdir -p "$OUT/gerbers"
+
+# ⛔ THIS SAID `rm -rf "$OUT"` AND IT DELETED SOMEBODY ELSE'S WORK. fab/ is not
+# this script's directory — cad/patterns.py writes the 1:1 leather cutting
+# patterns into fab/patterns/, and wiping the whole tree took them with it. The
+# deletion then went into a commit as 8106 removed lines that nobody read,
+# because a commit full of regenerated gerbers is a commit nobody reads.
+#
+# ⭐ So it clears what it OWNS, by name, and leaves the rest alone. A tool that
+# starts by deleting a directory it shares is a tool that will eventually delete
+# something it cannot regenerate.
+mkdir -p "$OUT/gerbers"
+rm -f "$OUT"/gerbers/* "$OUT"/*.csv "$OUT"/*.txt "$OUT"/*.zip "$OUT"/*.pos \
+      "$OUT"/README-FAB.md
+rm -rf "$OUT/optics" "$OUT/taxels"
 
 # ⛔ THREE BOARDS SHIP, NOT ONE. The insert board is the one with the processor;
 # the optics flex carries the camera, the illuminators and the sensor that arms
