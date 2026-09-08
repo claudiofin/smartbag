@@ -828,6 +828,57 @@ for _src in ("sb_sense.c", "sb_camera.c"):
     check(f"{_src} is in the image", f"../{_src}" in _cmake,
           "not in target/CMakeLists.txt, so it is tested and not shipped")
 
+print("\n── the README's numbers are the project's numbers")
+# ⛔ EVERY HEADLINE FIGURE IN THE README HAS DRIFTED AT LEAST ONCE. It said 111
+# footprints when the board had 113, 264 assertions for a charge policy that had
+# grown to 544, "4L rigid-flex" on the silkscreen after the stackup went to six,
+# and it described two files that had been deleted. None of it was noticed by
+# reading, because nobody re-reads a README — which is exactly the argument this
+# project makes about comments, applied to the document that makes it.
+#
+# ⚠️ This checks the numbers a reader would quote, not the prose. A README can
+# still be out of date about what a thing MEANS; it can no longer be out of date
+# about how many there are.
+_readme = open(os.path.join(ROOT, "README.md")).read()
+
+_fp_total = len(nl.PARTS)
+_fp_named = sum(1 for p in nl.PARTS if p[0] in _bom.BOM)
+_fp_fid = sum(1 for p in nl.PARTS if p[2] == pl.FIDUCIAL_SYMBOL)
+_fp_pass = _fp_total - _fp_named - _fp_fid
+check("the README's footprint count is the board's",
+      f"**{_fp_total} footprints: {_fp_named} named parts, {_fp_pass} passives, "
+      f"{_fp_fid} fiducials.**" in _readme,
+      f"board has {_fp_total} = {_fp_named} named + {_fp_pass} passives + "
+      f"{_fp_fid} fiducials")
+
+# ⚠️ The assertion totals come from running the tests, not from a number in a
+# Makefile: a test file that stops being built would otherwise keep its count.
+_total_asserts, _power_asserts = 0, 0
+try:
+    _out = subprocess.run(["make", "-s"], cwd=os.path.join(ROOT, "firmware"),
+                          capture_output=True, text=True, timeout=600).stdout
+    for _m in re.finditer(r"(\d+) checks", _out):
+        _total_asserts += int(_m.group(1))
+    _pm = re.search(r"sb_power.*?\n.*?\n?\s*(\d+) checks", _out, re.S)
+    _power_asserts = int(_pm.group(1)) if _pm else 0
+except Exception as _e:                                       # pragma: no cover
+    _total_asserts = -1
+check("the README's assertion total is what the tests report",
+      _total_asserts < 0 or f"**{_total_asserts} assertions**" in _readme,
+      f"tests report {_total_asserts}")
+check("and the charge policy's own count",
+      not _power_asserts or f"{_power_asserts} assertions" in _readme,
+      f"test_sb_power reports {_power_asserts}")
+
+# ⛔ Files the README points at have to exist. It described finish.py and
+# close_gaps.py for a while after both were deleted.
+_named_files = set(re.findall(r"\]\((?!http)([A-Za-z0-9_./-]+\.(?:py|sh|[ch]|md|js))\)",
+                              _readme))
+_missing = sorted(f for f in _named_files
+                  if not os.path.exists(os.path.join(ROOT, f)))
+check("every file the README links to exists", not _missing,
+      f"{len(_missing)} do not: {', '.join(_missing[:6])}")
+
 print("\n── the pictures are not older than what they show")
 # ⛔ NOTHING HAS EVER CHECKED THIS, and it is the easiest way for a repository to
 # start lying. A render is a claim about a design at a moment; the design moved

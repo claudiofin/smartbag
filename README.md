@@ -30,7 +30,7 @@ been built.
 | recognition | an **enrolment pipeline that runs and is measured** — see [Recognition](#recognition). ⚠️ It now has to run on a Cortex-M33, not an NPU. |
 | app | **written and running** — [`app/`](app/), tested against the firmware's own bytes. No native build; it is a web app. |
 | RF | full-wave simulation rejected the antenna, closed-form analysis then rejected the whole feed — and the real part **dissolved the problem**: 60 GHz silicon has the antenna inside the package. There is now **no 60 GHz copper on this board.** See [RF](#rf). |
-| thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). It asked for charge current to be a function of cell temperature; the cell now has an NTC **in the pack**, a PMIC that reads it, and a policy under 264 assertions. |
+| thermal | **analysed** ([`thermal/budget.py`](thermal/budget.py)). It asked for charge current to be a function of cell temperature; the cell now has an NTC **in the pack**, a PMIC that reads it, and a policy under 544 assertions. |
 | the taxel front end | measured wrong, then **fixed in hardware**: six transimpedance amplifiers and a 16:1 multiplexer — see [The taxel matrix](#the-taxel-matrix). |
 | the 2.4 GHz antenna | ⛔ its datasheet found **three errors** in this design, one of them a terminal tied to ground that the part marks NC — see [The antenna](#the-antenna). |
 | the optics flex | **exists now.** J1 was a connector to nothing for the whole project: the camera, the illuminators and the ToF live here. DRC 0 errors, 1 unconnected item. |
@@ -366,7 +366,7 @@ ms on a 128 MHz M33 with CMSIS-NN depending on how many cycles per MAC you are
 willing to believe. The settle window is 2000 ms. The margin is an order of
 magnitude, which is the only reason losing the NPU was survivable.
 
-**111 footprints: 23 named parts, 82 passives, 6 fiducials.** The floorplan lives
+**113 footprints: 21 named parts, 86 passives, 6 fiducials.** The floorplan lives
 in one block in `netlist.py`; [`hardware/place.py`](hardware/place.py) turns it
 into positions whose courtyards do not intersect, because a hundred hand-typed
 coordinates always collide somewhere — the first pass collided in 28 places.
@@ -1287,7 +1287,7 @@ missing. It is pure — no I/O, no clock, no state — so all of it is testable.
 | cell < 0 °C or ≥ 45 °C | **off** |
 | thermistor reading open | **off** |
 
-**264 assertions**, and the sweeps are the ones worth naming: every cell
+**544 assertions**, and the sweeps are the ones worth naming: every cell
 temperature from −10 to 60 °C with the bag shut, asserting not one returns full
 current; every temperature above 45 °C, asserting charging **stops** rather than
 slows; every temperature below 0 °C, because charging a cold lithium cell plates
